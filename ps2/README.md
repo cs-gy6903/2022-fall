@@ -93,6 +93,7 @@ manage multiple Python versions.
 ```python
 import typing
 
+
 def problem1(b: int, e: int) -> int:
     """
     Return base `b` raised to the exponent `e`
@@ -151,6 +152,8 @@ def problem4(g: int, p: int, a: int, A: int) -> bool:
     Recall that:
         - trivial exponents (i.e. 0, 1) are invalid
         - the generator must me less than the modulus
+        - private exponent `a` must be greater than generator `g` and less than
+          prime modulus `p`: `g < a < p`.
         - because the public key is computed modulo `p`, it must be less than
           `p`
         - `A` must be computed as `g ^ a mod p`
@@ -180,16 +183,21 @@ class DHNegotiatedSecret(typing.TypedDict):
     A: int
 
 
-def problem5(g: int, p: int, B: int) -> DHNegotiatedSecret:
+def problem5(g: int, p: int, B: int, b: int = None) -> DHNegotiatedSecret:
     """
     Given a generator `g`, prime modulus `p`, and Bob's public key `B`, first
-    compute a valid Diffie-Hellman keypair `(a, A)` under `g` and `p`. Then,
-    using your private exponent `a`, compute the shared secret `s`. Return a
-    tuple your public key `A` keyed by `'A'` and the shared secret `s` keyed by
-    `'s'`.
+    compute a valid Diffie-Hellman keypair for Alice consisting of public key
+    `A` and private exponent `a`, using `g` and `p`. Then, using your private
+    exponent `a`, compute the shared secret `s`. Return a DHNegotiatedSecret
+    dict with your public key `A` keyed by `'A'` and the shared secret `s`
+    keyed by `'s'`.
 
     Recall that Alice computes the shared secret `s` by raising Bob's public
-    key `B` to their (Alice's) private exponent modulo `p`: `s = B^a mod p`.
+    key `B` to their (Alice's) private exponent `a`, all modulo `p`. As an
+    equation, this looks like `s = B^a mod p`.
+
+    Please note that the optional parameter `b` is **not required for your
+    solution**, and is only there for use by the auto-grader.
 
     # not doctest as output is random
     > problem5(5, 17, 9)
