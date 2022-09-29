@@ -3,7 +3,7 @@
 This assignment will cover the basics of (finite-field) Diffie-Hellman key
 agreement. While real-world key agreement has many pitfalls and edge cases,
 this assignment will treat the underlying math in a simplified manner for
-illustrative purposes.  Please **DO NOT** use this assignment for real-world
+illustrative purposes. Please **DO NOT** use this assignment for real-world
 cryptographic purposes.
 
 See GradeScope for exact due-date of this assignment.
@@ -122,6 +122,7 @@ class DHKeyPair(typing.TypedDict):
     >>> DHKeyPair({'a': 1, 'A': 2})
     {'a': 1, 'A': 2}
     """
+
     A: int
     a: int
 
@@ -164,7 +165,7 @@ def problem4(g: int, p: int, a: int, A: int) -> bool:
     False
     >>> problem4(5, 17, 3, 20)
     False
-    >>> problem4(2, 17, 5, 15)
+    >>> problem4(7, 17, 12, 13)
     True
     """
 
@@ -179,11 +180,14 @@ class DHNegotiatedSecret(typing.TypedDict):
     >>> DHKeyPair({'s': 1, 'A': 2})
     {'s': 1, 'A': 2}
     """
+
     s: int
     A: int
 
 
-def problem5(g: int, p: int, B: int, b: int = None) -> DHNegotiatedSecret:
+def problem5(
+    g: int, p: int, B: int, b: typing.Optional[int] = None
+) -> DHNegotiatedSecret:
     """
     Given a generator `g`, prime modulus `p`, and Bob's public key `B`, first
     compute a valid Diffie-Hellman keypair for Alice consisting of public key
@@ -205,8 +209,6 @@ def problem5(g: int, p: int, B: int, b: int = None) -> DHNegotiatedSecret:
     > problem5(5, 17, 9)
     {'A': 10, 's': 2}
     """
-
-
 ```
 
 ### Binary Submission

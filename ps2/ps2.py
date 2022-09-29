@@ -72,7 +72,7 @@ def problem4(g: int, p: int, a: int, A: int) -> bool:
     False
     >>> problem4(5, 17, 3, 20)
     False
-    >>> problem4(2, 17, 5, 15)
+    >>> problem4(7, 17, 12, 13)
     True
     """
 
@@ -92,7 +92,9 @@ class DHNegotiatedSecret(typing.TypedDict):
     A: int
 
 
-def problem5(g: int, p: int, B: int, b: int = None) -> DHNegotiatedSecret:
+def problem5(
+    g: int, p: int, B: int, b: typing.Optional[int] = None
+) -> DHNegotiatedSecret:
     """
     Given a generator `g`, prime modulus `p`, and Bob's public key `B`, first
     compute a valid Diffie-Hellman keypair for Alice consisting of public key
