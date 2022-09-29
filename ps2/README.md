@@ -164,7 +164,7 @@ def problem4(g: int, p: int, a: int, A: int) -> bool:
     False
     >>> problem4(5, 17, 3, 20)
     False
-    >>> problem4(5, 17, 3, 6)
+    >>> problem4(2, 17, 5, 15)
     True
     """
 
