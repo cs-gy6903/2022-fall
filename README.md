@@ -1,9 +1,13 @@
 # CS-GY6903 Applied Cryptography Fall 2022
 
-## Assignments
+## Homework Assignments
 
 - [ps1](./ps1/) - introduction basics
 - [ps2](./ps2/) - Diffie-Hellman key agreement
+
+## Optional Assignments
+
+- [project](./project/) - implement a basic TLSv1.3 client
 
 ## Resources
 

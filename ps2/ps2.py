@@ -82,9 +82,9 @@ class DHNegotiatedSecret(typing.TypedDict):
     A wrapper type representing a Diffie-Hellman secret, consisting of secret
     `s` and public key `A`.
 
-    >>> DHKeyPair(s=1, A=2)
+    >>> DHNegotiatedSecret(s=1, A=2)
     {'s': 1, 'A': 2}
-    >>> DHKeyPair({'s': 1, 'A': 2})
+    >>> DHNegotiatedSecret({'s': 1, 'A': 2})
     {'s': 1, 'A': 2}
     """
 
