@@ -1,0 +1,12 @@
+[package]
+name = "cs6903"
+version = "0.1.0"
+authors = ["Will Childs-Klein <wc2274@nyu.edu>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bson = "2.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11.7"
