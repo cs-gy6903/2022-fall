@@ -19,10 +19,11 @@ client along "checkpoints" in the autograder at each step of the TLS handshake,
 ending with a TLS client capable of interacting with real-world endpoints. To
 simplify the assignment's implementation, we will restrict the supported
 ciphersuite to `TLS_AES_128_GCM_SHA256` using ECDHE with x25519 for key
-exchange, 128-bit AES in GCM mode for symmetric encryption, and ed25519 for
-signatures. We will not implement session resumption/stores, pre-shared keys,
-downgrade prevention, or other real-world concerns that would be required for a
-practical TLS implementation.
+exchange, 128-bit AES in GCM mode for symmetric encryption, and ECDSA for
+signatures. We will not implement [session resumption][32]/stores, [pre-shared
+keys][31], [downgrade prevention][30], [key updates][29], or other real-world
+concerns that would be required for a practical and real-world secure TLS
+implementation.
 
 The client will, however, need to validate the server certificate, checking for
 things like expiration, signature validity, etc. The client will also implement
@@ -51,40 +52,196 @@ Extension, and Key Share Extension:
 
 ## Phases
 
-### Phase 0: Record Encoding
+### Phase 0: Values, Messages, and Records
 
-This section will give an overview of how TLS records are encoded at the byte
-level. Some types described in the RFC will be fixed-size (e.g. [32-bit
-integers][8]), and some will be variable length (e.g. [vectors][9]). For
-example:
+#### Values and Types
 
-- a 32-bit integer with a value decimal 19 is encoded as `0x00000013`
+This phase will cover the basic building blocks of TLS as a protocol: _values_,
+_messages_, and _records_. First we'll discuss values and their types, followed
+by messages composed of those values, and finally records composed of messages.
+
+The most basic building block of TLS is the value. A value is simply a sequence
+of bytes whose meaning is defined by its _type_. For instance, as we'll see
+below a uint32 and a length-4 byte array are both a sequence of 4 bytes, but
+the former represents a single number value, while the latter could represent
+any number of entities consisting of 4 bytes. [Section 3 of RFC-8446][14]
+defines the RFC's notation for describing value types and their formats:
+
+```
+   3. Presentation Language ..........................................19
+      3.1. Basic Block Size ..........................................19
+      3.2. Miscellaneous .............................................20
+      3.3. Numbers ...................................................20
+      3.4. Vectors ...................................................20
+      3.5. Enumerateds ...............................................21
+      3.6. Constructed Types .........................................22
+      3.7. Constants .................................................23
+      3.8. Variants ..................................................23
+```
+
+Of these, we will discuss a few of the "types" used to encode data, namely
+numbers and vectors. Enumerateds (analogous to `enum` types in other
+languages), constructed types (analogous to `struct` types in other languages),
+constants, and variants (analogous to `union` types in other languages) are
+also important, but are less salient and novel so we'll cover them implicitly
+in the following phases as the need arises.
+
+Number types are fixed-size and given in big-endian (i.e. the leftmost bit is
+the most significant bit), with a few of them [defined a priori][8]:
+
+- `uint8`: unsigned 8-bit integer (like an usigned `char` in C)
+- `uint16`: unsigned 16-bit integer
+- `uint24`: unsigned 24-bit integer (we won't use this much)
+- `uint64`: unsigned 64-bit integer (like an unsigned `long` in C)
+
+[Vector types][9] can be broken down into two sub-types: fixed-length and
+variable-length. Fixed-length vectors have a constant length defined in the
+RFC, and as such don't explicitly encode this length "on-the-wire".
+Variable-length vectors, on the other hand, encode the length of the byte
+vector as a "prefix" given before the vector contents. The length of this
+prefix is determined by the max possible length of the vector as defined in the
+RFC. For example, a variable-length vector with max length of 2^14 will have a
+length prefix of 2 bytes, as 2 bytes are required to represent that maximum
+potential length. 2^14 is 16,384 in decimal and `0x4000` in hex, which occupies
+two bytes).
+
+Some examples of number and vector types:
+
 - a 8-bit integer with a value decimal 1 is encoded as `0x01`
-- a 0-byte vector is encoded as `0x00`
-- a 1-byte vector with max byte as the value is encoded as `0x01ff`
-- a 4-byte vector where each byte is a subsequent power of 2 is encoded as
-  `0x0400010204`
+- a 32-bit integer with a value decimal 19 is encoded as `0x00000013`
+- a 0-byte variable-length vector is encoded as `0x00`
+- a 1-byte variable-length vector with max byte as the value is encoded as
+  `0x01ff`
+- a 4-byte variable-length vector where each byte is a subsequent power of 2 is
+  encoded as `0x0400010204`
+- a 6-byte fixed-length vector of incrementing byte values starting at `01` is
+  encoded as `0x010203040506`
+    - note that the length is **not encoded** in fixed-length vectors
 
-The scaffolding code will ask you to encode some of these types with given byte
-array values.
+The scaffolding code will ask you to encode some of these types given their
+unencoded values.
 
-Another important concept in record encoding is headers. Headers allow parsers
+#### Type-Length-Value Encoding
+
+[Type-length-value ("TLV") encoding][35] is a class of encoding schemes where
+data are defined as logical "tuples" consisting of:
+
+1. type
+1. length
+3. value
+
+This sub-section won't spend much time discussing these, as the [wikipedia
+page][35] already does a very good job of this, and yes, because they _really
+are that simple_ as long as the byte-length of type and length are themselves
+well-defined. We will see and implement many instances of TLV encoding (record
+encoding, handshake message encoding, extension encoding, and on and on), so be
+sure you're familiar with the general idea.
+
+#### Messages
+
+Logical steps in the TLS protocol are captured by _messages_. Messages are
+composed of one or more values that are interpreted differently depending on
+the message type. The first message type we will see are _handshake messages_.
+The first 4 bytes of these messages constitute the _handshake header_:
+
+1. message type (one byte)
+1. message size (3 bytes)
+
+Subsequent bytes comprise the handshake message itself. The message's format
+varies by type, as we'll see in Phases 1-5 below. [Section 4 of RFC-8446][34]
+defines the following handshake message types as an enumerated with their
+decimal values in parenthesis:
+
+```
+          client_hello(1),
+          server_hello(2),
+          new_session_ticket(4),
+          end_of_early_data(5),
+          encrypted_extensions(8),
+          certificate(11),
+          certificate_request(13),
+          certificate_verify(15),
+          finished(20),
+          key_update(24),
+          message_hash(254),
+```
+
+We will only consider the following messages, with their value given in hex:
+
+- `client_hello`: `0x01`
+- `server_hello`: `0x02`
+- `certificate`: `0x0b`
+- `certificate_verify`: `0x0f`
+- `finished`: `0x14`
+
+We'll cover the format of each of these in subsequent phases.
+
+#### Records
+
+Just as messages contain values, records contain messages. RFC-8446 defines a
+sub-protocol that it refers to as the ["record protocol"][33]. TLS _messages_
+are encoded into _records_ for sending across a transport protocol (usually
+TCP). This abstraction allows implementations to send message _fragments_
+across multiple records. The record layer also provides a convenient
+abstraction for encrypting some handshake messages, as the record header
+metadata is given in plaintext, and the encrypted message content can be
+treated opaquely at the _record layer_, before being decrypted and being
+operated up on at the _message layer_.
+
+For simplicity's sake, we will consider messages and headers as 1:1 (i.e. 1
+message per record, and 1 record per message), but we still need to implement
+the record protocol/layer in order to interoperate with real-world TLSv1.3
+implementations.
+
+Like handshake messages, records also have headers. Headers allow parsers
 to modify their behavior based on the type, size, and protocol version of
-records. Here are the header formats we'll cover:
+records. Record headers consist of 5 bytes, and are formatted like so:
 
-1. record header
-    1. record type (1 byte)
-    1. protocol version (constant value of `0x0301`, 2 bytes)
-    1. record size (2 bytes)
-1. handshake message header
-    1. message type (one byte)
-    1. message size (3 bytes)
+1. record type (1 byte)
+1. legacy protocol version (constant value of `0x0303`, 2 bytes)
+1. record size (2 bytes)
+
+Section [5.1 of RFC-8446][27] defines record types (again, as an enum with
+base-10 value in parentheses):
+
+```
+invalid(0),
+change_cipher_spec(20),
+alert(21),
+handshake(22),
+application_data(23),
+```
+
+We will only consider the following messages, with their value given in hex:
+
+- `handshake`: `0x16`
+- `application_data`: `0x17`
 
 The record type of all (unencrypted) handshake records is `0x16`. While
-encrypted handshake messages are still messages _on the message level_, they
-have a different record type of "application data", `0x17`. This is because at
-the record level, encrypted message contents are opaque and must be decrypted
-before the message type can be determined.
+encrypted handshake messages are still handshake messages at the _message
+layer_, they have a different type ("application data", `0x17`) at the
+_application layer_. This is because at the record layer, encrypted message
+contents are encrypted (i.e. opaque) and must be decrypted before the message
+type can be determined and the message can be parsed.
+
+We'll also need to maintain running counters of records read and records
+written during a connection, as described in [section 5.3 of RFC-8446][28]:
+
+```
+   A 64-bit sequence number is maintained separately for reading and
+   writing records.  The appropriate sequence number is incremented by
+   one after reading or writing each record.  Each sequence number is
+   set to zero at the beginning of a connection and whenever the key is
+   changed; the first record transmitted under a particular traffic key
+   MUST use sequence number 0.
+```
+
+These counters will be used as our record nonces for generating unique
+per-record IVs for record encryption and decryption later on in the handshake.
+The record layer is fully described in [section 5.1 of RFC-8446][27]. We won't
+see encrypted handshake messages until Phase 4, so we will defer diving into
+the [record payload protection][22] (i.e. `application_data`-type record
+encryption/decryption) scheme until then.
 
 ### Phase 1: Present client Hello
 
@@ -370,15 +527,11 @@ will be available for the transcript.
 ### Phase 4: Validate server: Certificate, CertificateVerify, and Finished
 
 Now that both sides have exchanged their respective Hello messages and key
-shares, the rest of the handshake can be encrypted under each party's public
-key. So, subsequent records sent by the server will be encrypted using the
-client's public key (i.e. the key sent in the intial client Hello message).
-
-Unlike preceding plaintext handshake records, ecrypted handshake messages have
-a record type of "application data" (`0x17`).
-
-Encrypted application data records, described in [section 5.2 of RFC-8446][22],
-have the following format (this includes the record header):
+shares, the rest of the handshake can be encrypted using keys derived from the
+shared secret. Unlike preceding plaintext handshake records, ecrypted handshake
+messages have a record type of "application data" (`0x17`). Encrypted
+application data records, described in [section 5.2 of RFC-8446][22], have the
+following format (this includes the record header):
 
 - record type (`0x17`, 1 byte)
 - unused legacy protocol version (`0x0303`, 2 bytes)
@@ -386,11 +539,11 @@ have the following format (this includes the record header):
 - encrypted application data ciphertext (variable length)
 - authentication tag (length depends on cipher, 16 bytes for AES GCM)
 
-So, for each of this phase's messages, we'll need to decrypt the records in
-order to parse the messages and validate their contents. Per our negotiated
+For each of this phase's messages, we'll need to decrypt the records in order
+to parse the messages and validate their contents. Per our negotiated
 ciphersuite, these records are encrypted using AES 128 GCM, so we know that
-we'll need a master key and an IV. The calculation of these inputs is described
-in [section 7.3 of RFC-8446][23]; you may recognize our old friend
+we'll need a master key and an IV. The calculation of these inputs is partially
+described in [section 7.3 of RFC-8446][23]; you may recognize our old friend
 `HKDF-Expand-Label` from Phase 3:
 
 ```
@@ -399,7 +552,27 @@ in [section 7.3 of RFC-8446][23]; you may recognize our old friend
 ```
 
 Because this is 128-bit AES, the key and IV lengths are 128 bits (i.e. 16
-bytes). So, what do we use for the `Secret` passed into `HKDF-Expand-Label`?
+bytes). However, recall that **IVs cannot be reused** across records without
+compromising the security of the symmetric encryption. So, for each encrypted
+record, we need to modify our IV using a nonce as described in [section 5.3 of
+RFC-8446][28]:
+
+```
+   The per-record nonce for the AEAD construction is formed as follows:
+
+   1.  The 64-bit record sequence number is encoded in network byte
+       order and padded to the left with zeros to iv_length.
+
+   2.  The padded sequence number is XORed with either the static
+       client_write_iv or server_write_iv (depending on the role).
+
+   The resulting quantity (of length iv_length) is used as the
+   per-record nonce.
+```
+
+We feed nonce into the AES cipher as an IV to decrypt records.
+
+So, what do we use for the `Secret` passed into `HKDF-Expand-Label`?
 Recall this excerpt from the graph in [section 7.1 of RFC-8446][18]:
 
 ```
@@ -426,10 +599,11 @@ encrypt records and the client uses the client secret to encrypt records, so
 for decryption each party needs to use the other's secret to derive the
 symmetric cipher inputs for decryption.
 
-Once the client has established the server's handshake key and IV, they can
-pass them, the ciphertext, and the authentication tag to a cryptography library
-to perform decryption (and validation of the auth tag against the ciphertext,
-ensuring integrity).
+Once the client has established the server's handshake key and IV (using the
+latter to calculate the per-record nonce), they can pass the key, nonce,
+ciphertext, and authentication tag to a cryptography library to perform AES
+decryption (and validation of the auth tag against the ciphertext, ensuring
+integrity).
 
 Now it's time to parse and validate the server's messages! As with prior
 sections detailing message format, we will elide record and message headers
@@ -477,7 +651,8 @@ TODO: high-level description of walking trust chain from root to leaf.
 
 The CertificateVerify message is given in the following format:
 
-- signature type (constant `0x0807` for ed25519, 2 bytes)
+- signature type (constant `0x0403` [for `ecdsa_secp256r1_sha256`][26], 2
+  bytes)
 - signature length (`0x40`, 2 bytes)
 - signature data (64 bytes)
 
@@ -598,9 +773,6 @@ below, but the actual assignment will use BSON for stdin/stdout IO and `bytes`
 objects for python auto-import grading. Likewise with the output bytes in the
 example outputs.
 
-TODO: add additional problems for testing record-encoded variants, perhaps in
-Phase 7?
-
 **DISCLAIMER:** At the time of this writing (10/7/2022), the scaffolding
 problems below are still being implemented in the autograder, and are subject
 to change pending finalization. We will notify the class and remove this
@@ -609,7 +781,7 @@ ultimate "source of truth"). Until then, please update your local copy of this
 specification regularly and keep an eye on #general for GitHub notifications
 about updates to this repo.
 
-## Phase 0: Record Encoding
+## Phase 0: Values, Messages, and Records
 
 1. `encoding` sub-problems:
     1. `uint32(x: int) -> bytes`: record-encode `x` as a 32-bit unsigned
@@ -626,6 +798,10 @@ about updates to this repo.
    given `message_type`, produce a handshake message header for a message of
    size `size`.
 
+TODO: add a few _inverse_ problems here -- given encoded values, return the decoded representation of those values
+TODO: include question requiring student to record-encode random input as a handshake message record
+TODO: given a few unencoded values, have them encode the values per spec then encode their concatenation as a message, then encode that message as a record.
+
 ## Phase 1: Present client Hello
 
 1. `client_version() -> bytes`: return the encoded client version
@@ -637,8 +813,11 @@ about updates to this repo.
    compression methods
 1. `extensions_length() -> bytes`: return the encoded length of extensions
     - NOTE: this must correspond to the sum of the responses to the
-      `extensions` subproblems below
-1. `extensions` sub-problems:
+      `extensions` subproblems below. in other words, sum up the length of each
+      of the encoded extensions, and return the properly encoded value of that
+      sum. consult the spec for how many bytes are needed to encode this value.
+1. `extensions` sub-problems (NOTE: these must be TLV-encoded as discussed in
+   the spec):
     1. `supported_versions() -> bytes`: retrun the encoded supported version
     1. `server_name(name: str) -> bytes`: convert string `name` into encoded
        and padded-out server name extension value
@@ -716,6 +895,8 @@ Coming Soon!
 
 ## Phase 7: Putting It All Together
 
+TODO: all of these must be record encoded
+
 Coming Soon!
 
 ## Example Input
@@ -753,7 +934,7 @@ Coming Soon!
             "supported_versions": null,
             "server_name": "localhost",
             "supported_groups": null,
-            "key_share": null,
+            "key_share": null
         }
     },
     "phase2": {
@@ -765,13 +946,13 @@ Coming Soon!
         "extensions_length": "TODO",
         "extensions": {
             "supported_versions": "002b0003020304",
-            "key_share": "TODO",
+            "key_share": "TODO"
         }
     },
     "phase3": {
         "hkdf_extract": {
             "salt": "TODO",
-            "keying_material": "TODO",
+            "keying_material": "TODO"
         },
         "hkdf_expand": {
             "key": "TODO",
@@ -784,12 +965,12 @@ Coming Soon!
                 "TODO client Hello",
                 "TODO server Hello"
             ]
-        }
+        },
         "hkdf_expand_label": {
             "secret": "TODO",
             "label": "TODO",
             "context": "TODO",
-            "length": 0,
+            "length": 0
         },
         "derive_secret": {
             "secret": "TODO",
@@ -823,9 +1004,9 @@ eye on #general for GitHub notifications about updates to this repo.
 {
     "phase0": {
         "encoding": {
-            "uint32": "000007",
+            "uint32": "00000007",
             "uint8": "00",
-            "uint16": "00xb",
+            "uint16": "000b",
             "byte_vectors": [
                 "03ffffff",
                 "03010101"
@@ -941,3 +1122,13 @@ to stdout.
 [23]: https://www.rfc-editor.org/rfc/rfc8446#section-7.3
 [24]: https://www.rfc-editor.org/rfc/rfc8446#section-4.4.4
 [25]: https://www.rfc-editor.org/rfc/rfc8446#section-4.4
+[26]: https://www.rfc-editor.org/rfc/rfc8446#section-4.2.3
+[27]: https://www.rfc-editor.org/rfc/rfc8446#section-5.1
+[28]: https://www.rfc-editor.org/rfc/rfc8446#section-5.3
+[29]: https://www.rfc-editor.org/rfc/rfc8446#section-4.6.3
+[30]: https://www.rfc-editor.org/rfc/rfc8446#section-4.1.3
+[31]: https://www.rfc-editor.org/rfc/rfc8446#section-4.2.9
+[32]: https://www.rfc-editor.org/rfc/rfc8446#section-2.2
+[33]: https://www.rfc-editor.org/rfc/rfc8446#section-5
+[34]: https://www.rfc-editor.org/rfc/rfc8446#section-4
+[35]: https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value
