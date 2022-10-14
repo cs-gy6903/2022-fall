@@ -4,6 +4,7 @@
 
 - [ps1](./ps1/) - introduction basics
 - [ps2](./ps2/) - Diffie-Hellman key agreement
+- [ps3](./ps3/) - hashing
 
 ## Optional Assignments
 
