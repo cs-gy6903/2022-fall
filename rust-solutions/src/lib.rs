@@ -68,6 +68,24 @@ pub fn get_rand_long() -> u64 {
     panic!("RDRAND not supported or failed to produce random output");
 }
 
+// https://en.wikipedia.org/wiki/Modular_exponentiation#Pseudocode
+pub fn modexp(base: u32, exp: u32, modulus: u32) -> u32 {
+    if modulus == 1 {
+        return 0;
+    }
+    let mut ret: u64 = 1;
+    let mut b: u64 = (base % modulus) as u64;
+    let mut e: u64 = exp as u64;
+    while e > 0 {
+        if e % 2 == 1 {
+            ret = (ret * b) % modulus as u64;
+        }
+        e >>= 1;
+        b = (b * b) % modulus as u64;
+    }
+    ret as u32
+}
+
 pub fn get_file_name(file: &str) -> String {
     String::from(Path::new(file).file_stem().unwrap().to_str().unwrap())
 }
@@ -122,7 +140,20 @@ pub mod test_utils {
             ps_name,
             extension
         );
-        let infile = File::open(&infile_path).expect("Failed to open test infile");
+        // sometimes the sample BSON is produced with different format, so we do a little song and
+        // dance in the error condition to account for that
+        let infile = match File::open(&infile_path) {
+            Ok(f) => f,
+            Err(_) => {
+                let alt_path = format!(
+                    "{}/../{}/{}.bson",
+                    env!("CARGO_MANIFEST_DIR"),
+                    ps_name,
+                    extension
+                );
+                return Box::new(File::open(&alt_path).expect("Failed to open test infile"));
+            }
+        };
         let input_bson: Bson =
             bson::from_reader(BufReader::new(infile)).expect("Error loading bson");
         let mut inbuff =
@@ -141,6 +172,15 @@ mod unit_tests {
         for ii in 0..64 + 1 {
             let b = get_rand_bytes(ii as usize);
             assert_eq!(ii, b.len());
+        }
+    }
+
+    #[test]
+    fn test_modexp() {
+        let test_cases: Vec<(u32, u32, u32, u32)> =
+            vec![(2, 5, 3, 2), (100, 9, 8, 0), (31, 7, 6, 1)];
+        for (a, b, c, d) in test_cases.iter() {
+            assert_eq!(modexp(*a, *b, *c), *d);
         }
     }
 }
