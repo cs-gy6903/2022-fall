@@ -171,6 +171,10 @@ def problem4(length: int, hash: bytes, suffix: bytes) -> bytes:
     > h = sha256.sha256()
     > h.state = (b'oldhash', old_length + padding_length)
 
+    This library does not have much documentation or examples in the README,
+    however after the state is restored, it is very similar to native hashlib
+    in its usage. Also feel free to check out its source code in GitHub.
+
     The input you will receive will be:
 
     * old input length (you do not actually need full input value)
