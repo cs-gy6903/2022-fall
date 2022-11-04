@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 import enum
 import functools
 import re
+import sys
 import typing
 
 import more_itertools
@@ -140,6 +142,18 @@ class AnnotatedMixin:
             print(f"{i.name: <{longest_name}}   {value}".strip(), file=file)
 
 
+T_AnnotatedMixin = typing.TypeVar("T_AnnotatedMixin", bound=AnnotatedMixin)
+
+
+def annotate(data: T_AnnotatedMixin) -> T_AnnotatedMixin:
+    if "pytest" in "".join(sys.argv):
+        if "--doctest-modules" not in sys.argv:
+            data.annotate(sys.stdout)
+    elif sys.stdin.isatty():
+        data.annotate(sys.stderr)
+    return data
+
+
 def _pretty_hex(data: bytes, indent: str = "", prefix_length: int = 0) -> str:
     segment = 16
     return "\n".join(
@@ -170,6 +184,24 @@ def pretty_hex(data: bytes, file: typing.Optional[typing.IO] = None) -> None:
     16: 10 11 12 13
     """
     print(_pretty_hex(data), file=file)
+
+
+def pretty_hex_dict(data: dict[str, typing.Any | dict], prefix: str = "") -> None:
+    """
+    Print pretty bytes of a dict
+
+    >>> pretty_hex_dict({'foo': b'\\x00' * 5, 'bar': {'baz': b'\\x01' * 5}})
+    foo:
+    00 00 00 00 00
+    bar.baz:
+    01 01 01 01 01
+    """
+    for k, v in data.items():
+        if isinstance(v, dict):
+            pretty_hex_dict(v, f"{k}.")
+        else:
+            print(f"{prefix}{k}:")
+            pretty_hex(v) if isinstance(v, bytes) else print(v)
 
 
 def bytes_from_pretty(data: str) -> bytes:
