@@ -8,5 +8,13 @@ edition = "2018"
 
 [dependencies]
 bson = "2.2.0"
+byteorder = "1.4.3"
+hmac = "0.12.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11.7"
+sha1 = "0.10.5"
+sha2 = "0.10.6"
+# NOTE: unfortunately RustCrypto's sha2 crate doesn't expose internal state,
+#       only the raw SHA256 compression function
+sha2_state_exposed = { package = "sha2", git = "https://github.com/marcelo140/hashes"}
+ureq = "2.5.0"

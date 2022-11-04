@@ -125,6 +125,11 @@ pub mod test_utils {
     use std::fs::*;
     use std::io::*;
 
+    pub fn assert_byte_vec_eq(one: &Vec<u8>, two: &Vec<u8>) {
+        assert_eq!(one.len(), two.len());
+        one.iter().zip(two).for_each(|(a, b)| assert_eq!(*a, *b));
+    }
+
     pub fn get_test_input_reader(ps_name: &String) -> Box<dyn Read> {
         _get_reader(ps_name, &"in".to_string())
     }
