@@ -118,9 +118,6 @@ Some examples of number and vector types:
   encoded as `0x010203040506`
     - note that the length is **not encoded** in fixed-length vectors
 
-The scaffolding code will ask you to encode some of these types given their
-unencoded values.
-
 #### Type-Length-Value Encoding
 
 [Type-length-value ("TLV") encoding][35] is a class of encoding schemes where
@@ -214,6 +211,7 @@ application_data(23),
 
 We will only consider the following messages, with their value given in hex:
 
+- `alert`: `0x15`
 - `handshake`: `0x16`
 - `application_data`: `0x17`
 
@@ -255,7 +253,7 @@ message headers), in order:
 1. client version (constant `0x0303`, 2 bytes)
 1. client random (32 bytes)
 1. unused legacy session ID (constant empty vector `0x00`, 1 bytes total)
-1. supported cipher suites (constant vector [`0x021301`][7], 3 bytes total)
+1. supported cipher suites (constant vector [`0x00021301`][7], 4 bytes total)
     - NOTE: that for simplicity, the project will only support a single cipher
       suite, `TLS_AES_128_GCM_SHA256` (`0x1301`).
 1. unused legacy compression methods (constant vector `0x0100`, 2 bytes)
@@ -272,33 +270,32 @@ The client Hello must also include the following extensions in the format
 described [in the RFC][5]:
 
 1. [supported versions][10] (constant value of `0x002b0003020304`, 7 bytes total)
-    - type `0x002b` (2 bytes)
+    - extension type `0x002b` (2 bytes)
     - extension len `0x0003` (2 bytes)
     - versions len `0x02` (1 byte)
     - version `0x0304` (2 bytes)
 1. [server name][14] (variable length, < (2^8)^2 == 65536)
-    - type `0x0000` (2 bytes)
+    - extension type `0x0000` (2 bytes)
     - extension len `0x..` (2 bytes)
     - names len `0x..` (2 bytes, there will only be one entry, this is the len
       of all proceeding bytes)
     - entry type `0x00`, indicates hostname (1 byte)
     - hostname len, `0x..` (2 bytes)
     - hostname `0x..` (variable length)
-1. [supported groups][11] (constant vector `0x02001d`, 3 bytes)
-    - NOTE: for simplicity, the project will only support a single curve
+1. [supported groups][11] (constant vector `0x000a00040002001d`, 8 bytes)
+    - extension type `0x000a` (2 bytes)
+    - extension len `0x0004` (2 bytes)
+    - groups len `0x0002` (2 bytes)
+    - group x25519 `0x001d` (2 bytes)
+        - NOTE: for simplicity, the project will only support a single curve
       [x25519][12].
 1. [key share][13] (42 bytes)
-    - type `0x0033` (2 bytes)
-    - extension len `0x..` (2 bytes)
-    - key share len `0x..` (2 bytes)
+    - extension type `0x0033` (2 bytes)
+    - extension len `0x0026` (2 bytes)
+    - key share len `0x0024` (2 bytes)
     - kex group ID `0x001d` i.e. x25519 (2 bytes)
-        - NOTE: for simplicity, the project will only support one curve
-    - public key len `0x0020` i.e. 32 bytes (2 bytes)
+    - public key len `0x0020` i.e. 32 in base-10 (2 bytes)
     - public key `0x..` (32 bytes)
-
-The scaffolding code will validate your Phase 1 output for size and content
-as applicable. Note that the scaffolding will **not expect** these values to be
-Record-encoded.
 
 ### Phase 2: Validate server Hello
 
@@ -313,7 +310,7 @@ record and message headers):
 1. server random (32 bytes)
 1. unused legacy session ID echo (echoes whatever client sent, i.e. `0x00`, 1
    byte)
-1. cipher suite selection (constant value [`0x1301`][7], 3 bytes total)
+1. cipher suite selection (constant value [`0x1301`][7], 2 bytes total)
     - NOTE: this is the server's _selection_, so it's a singular value rather
       than a list as in the client Hello.
 1. unused legacy compression method selection (constant value `0x00`, 1 bytes)
@@ -321,7 +318,7 @@ record and message headers):
 1. extensions (49 bytes, see below)
 
 While the RFC requires special treatment by the client if it [encounters the
-following value of Server Random][15], but to keep things simple, we will not
+following value of Server Random][15], to keep things simple we will not
 require this behavior:
 
 >   For reasons of backward compatibility with middleboxes (see
@@ -339,18 +336,18 @@ require this behavior:
 The server Hello must include the following extensions in the format described
 [in the RFC][15]:
 
-1. [supported versions][10] (constant value of `0x002b0003020304`, 7 bytes total)
+1. [supported versions][10] (constant value of `0x002b00020304`, 6 bytes total)
     - type `0x002b` (2 bytes)
-    - extension len `0x0003` (2 bytes)
-    - versions len `0x02` (1 byte)
-    - version `0x0304` (2 bytes)
+    - extension len `0x0002` (2 bytes)
+    - selected version `0x0304` (2 bytes)
+        + NOTE: this extension is a list in client Hello, but is a single value
+          in server Hello as it indicates the server's version selection.
 1. [key share][13] (42 bytes)
     - type `0x0033` (2 bytes)
-    - extension len `0x..` (2 bytes)
-    - key share len `0x..` (2 bytes)
+    - extension len `0x0026` (2 bytes)
+    - key share len `0x0024` (2 bytes)
     - kex group ID `0x001d` i.e. x25519 (2 bytes)
-        - NOTE: for simplicity, the project will only support one curve
-    - public key len `0x0020` i.e. 32 bytes (2 bytes)
+    - public key len `0x0020` i.e. 32 in base-10 (2 bytes)
     - public key `0x..` (32 bytes)
 
 ### Phase 3: Calculate Session Secrets
@@ -364,7 +361,7 @@ under X25519:
 >   string inputs and outputs of the corresponding functions defined in
 >   [RFC7748]: 32 bytes for X25519 and 56 bytes for X448.
 
-And RFC-7748 [described][17] how we can use this public key value:
+And RFC-7748 [describes][17] how we can use this public key value:
 
 >   Using their generated values and the received input, Alice computes
 >   X25519(a, K_B) and Bob computes X25519(b, K_A).
@@ -378,9 +375,11 @@ And RFC-7748 [described][17] how we can use this public key value:
 While it would be important to check for the zero-value in real-world
 implementations, we won't require that here.
 
-Using the shared secret (referred to as `K` above) and HKDF (as described [in
-RFC 5869][19] and [on wikipedia][20] (with sample python implementation)) to
-compute the Master Secret using the [following scheme][18]:
+We then use the shared secret (referred to as `K` above) and HKDF (as described
+[in RFC 5869][19] and [on wikipedia][20]) to compute the Handshake Secret (used
+to derive symmetric keys for encrypted portions of the handshake) and the
+Master Secret (used to derive symmetric keys for application traffic) via the
+[following scheme][18]:
 
 ```
 01             0
@@ -443,14 +442,15 @@ we'll need to follow the guidance around using the 0 PSK as described
 This ends up working in our favor, however, because it means that we can
 precompute the value on line 15 that's fed into HKDF as a seed on line 18. It
 is safe to precompute this, as it is invariant over all handshakes that do not
-use a PSK. This means that computing the master secret becomes as simple as:
+use a PSK. This means that computing the Handshake and Master secrets becomes
+as simple as:
 
 ```
-salt = Derive-Secret(HKDF-Extract(0, 0), "derived", "")
-MasterSecret = Derive-Secret(HKDF-Extract(K, salt), "derived", "")
+Handshake Secret = HKDF-Extract(Derive-Secret(HKDF-Extract(0, 0), "derived", ""), K)
+Master Secret = HKDF-Extract(Derive-Secret(Handshake Secret, "derived", ""), 0)
 ```
 
-Where `K` is the handshake secret and `HKDF-Extract` and `HKDF-Expand` are
+Where `K` is the shared secret established via ECDH and `HKDF-Extract` is
 defined [like so][19]:
 
 ```
@@ -466,7 +466,7 @@ defined [like so][19]:
       IKM      input keying material
 ```
 
-and `Derive-Secret` is defined (indirectly) [like so][18]:
+and `Derive-Secret` is defined [like so][18]:
 
 ```
        Derive-Secret(Secret, Label, Messages) =
@@ -485,18 +485,36 @@ and `Derive-Secret` is defined (indirectly) [like so][18]:
        } HkdfLabel;
 ```
 
+`HKDF-Expand` is also defined in [RFC 5869][19] as:
+
+```
+   HKDF-Expand(PRK, info, L) -> OKM
+
+   Options:
+      Hash     a hash function; HashLen denotes the length of the
+               hash function output in octets
+
+   Inputs:
+      PRK      a pseudorandom key of at least HashLen octets
+               (usually, the output from the extract step)
+      info     optional context and application specific information
+               (can be a zero-length string)
+      L        length of output keying material in octets
+               (<= 255*HashLen)
+```
+
 In particular, note how the HkdfLabel is constructed from the Label, Context,
 and Length inputs to `HKDF-Expand-Label`. This will be needed later.
 
-Transcript-Hash is defined [like so][21]:
+Transcript-Hash is defined [like so][21] (`||` denotes concatenation):
 
 ```
 Transcript-Hash(M1, M2, ... Mn) = Hash(M1 || M2 || ... || Mn)
 ```
 
-Note that, in general, when we're taking Message hashes, we're _excluding_ the
+Note that, in general, when we're taking Message hashes, we're [_excluding_ the
 Record headers but _including_ the Message headers (as well as the Message
-contents):
+contents)][36]:
 
 >   This value is computed by hashing the concatenation of each included
 >   handshake message, including the handshake message header carrying the
@@ -516,13 +534,12 @@ sending/recieving any of:
 
 - HelloRetryRequest
 - second client Hello
-- EncryptedExtensions
 - server CertificateRequest
 - client Certificate
 - client CertificateVerify
 
-and that at this point in the handshake, only the client Hello and server Hello
-will be available for the transcript.
+At this point in the handshake, only the client Hello and server Hello will be
+available for the transcript.
 
 ### Phase 4: Validate server: Certificate, CertificateVerify, and Finished
 
@@ -533,15 +550,15 @@ messages have a record type of "application data" (`0x17`). Encrypted
 application data records, described in [section 5.2 of RFC-8446][22], have the
 following format (this includes the record header):
 
-- record type (`0x17`, 1 byte)
-- unused legacy protocol version (`0x0303`, 2 bytes)
+- record type `0x17 (1 byte)
+- unused legacy protocol version `0x0303` (2 bytes)
 - record data length (2 bytes)
 - encrypted application data ciphertext (variable length)
 - authentication tag (length depends on cipher, 16 bytes for AES GCM)
 
 For each of this phase's messages, we'll need to decrypt the records in order
 to parse the messages and validate their contents. Per our negotiated
-ciphersuite, these records are encrypted using AES 128 GCM, so we know that
+ciphersuite, these records are encrypted using 128-bit AES GCM, so we know that
 we'll need a master key and an IV. The calculation of these inputs is partially
 described in [section 7.3 of RFC-8446][23]; you may recognize our old friend
 `HKDF-Expand-Label` from Phase 3:
@@ -551,7 +568,7 @@ described in [section 7.3 of RFC-8446][23]; you may recognize our old friend
    [sender]_write_iv  = HKDF-Expand-Label(Secret, "iv", "", iv_length)
 ```
 
-Because this is 128-bit AES, the key and IV lengths are 128 bits (i.e. 16
+Because this is 128-bit AES, the key and IV lengths are both 128 bits (i.e. 16
 bytes). However, recall that **IVs cannot be reused** across records without
 compromising the security of the symmetric encryption. So, for each encrypted
 record, we need to modify our IV using a nonce as described in [section 5.3 of
@@ -570,7 +587,9 @@ RFC-8446][28]:
    per-record nonce.
 ```
 
-We feed nonce into the AES cipher as an IV to decrypt records.
+We feed nonce into the AES cipher as an IV to decrypt records. Note that the
+sequence number must be incremented after each record in the handshake is sent
+or recieved.
 
 So, what do we use for the `Secret` passed into `HKDF-Expand-Label`?
 Recall this excerpt from the graph in [section 7.1 of RFC-8446][18]:
@@ -588,16 +607,16 @@ Recall this excerpt from the graph in [section 7.1 of RFC-8446][18]:
 ```
 
 For decrypting encrypted records on the client side during the handshake, we
-will use the server's derived secret labeled with "s hs traffic". Note that the
-handshake keys and IVs are different for client and server. In order to
-encrypt/decrypt both sides of the conversation, both client and server will
-need to compute each others' symmetric cipher inputs. This is possible because
-they both derive these secrets using the initial shared secret courtesy of
-Diffie-Hellman, from which the common handshake secret is derived, from which
-the client/server secrets are derived. The server uses the server secret to
-encrypt records and the client uses the client secret to encrypt records, so
-for decryption each party needs to use the other's secret to derive the
-symmetric cipher inputs for decryption.
+will generate keys using the server's derived secret, expanded with label with
+"s hs traffic". Note that the handshake keys and IVs are different for client
+and server. In order to encrypt/decrypt both sides of the conversation, both
+client and server will need to compute each others' symmetric cipher inputs.
+This is possible because they both derive these secrets using the initial
+shared secret courtesy of Diffie-Hellman, from which the common handshake
+secret is derived, from which in turn the client/server-specific secrets are
+derived. The server uses the server secret to encrypt records and the client
+uses the client secret to encrypt records, so for decryption each party needs
+to use the other's secret to derive the symmetric cipher inputs for decryption.
 
 Once the client has established the server's handshake key and IV (using the
 latter to calculate the per-record nonce), they can pass the key, nonce,
@@ -611,8 +630,8 @@ below.
 
 The server Certificate message is given in the following format:
 
-- request context (constant empty vector `0x00`, 1 bytes total)
-- certificate list length, `n` certificates (3 bytes)
+- request context `0x00` (1 bytes total)
+- certificate list for `n` certificates (3 bytes)
 - certificate `0` length (3 bytes)
 - certificate `0` data (variable length)
 - certificate `1` length (3 bytes)
@@ -622,7 +641,7 @@ The server Certificate message is given in the following format:
 - certificate `n` data (variable length)
 
 NOTE: the bytes representing each certificate are presented in a format we
-haven't seen yet on this assignment: x509 encoded in ASN.1 DER. This steaming
+haven't seen yet in this assignment: x509 encoded in ASN.1 DER. This steaming
 bowl of alphabet soup is actually surprisingly simple (well, DER is relatively
 simple type-length-value similar to TLS record encoding, but x509 is a bit more
 intricate); feel free to use a library to parse it.
@@ -639,21 +658,20 @@ of the cert to determine whether the cert is valid:
    chain in greater detail below.
 
 The CertificateVerify message is used to tie the identity attested in the
-certificate to the holder of the key exchange's (ephemeral!) private key. The
-signature contained in CertificateVerify is computed using the server's ECDHE
-private key over a `Transcript-Hash` (per requirements, using SHA-256) of all
-preceeding handshake messages (including the server Certificate message). This
-means that it (the signature in CertificateVerify) can be verified using the
-server's ECDHE public key and independently computing a `Transcript-Hash` of
-all previous handshake messages.
-
-TODO: high-level description of walking trust chain from root to leaf.
+certificate to to the server. Because TLS 1.3 servers compute new ephemeral
+keys for each Diffie-Hellman key exchange, those keys cannot be used by the
+client to authenticate the server's ownership of the presented certificate
+(which is signed by a long-lived private key). The server creates the
+CertificateVerify message by signing a transcript hash of the handshake with
+the certificate's private key. To authenticate the server's ownership of the
+cert's private key, the client verifies this signature using the public key in
+the presented certificate.
 
 The CertificateVerify message is given in the following format:
 
-- signature type (constant `0x0403` [for `ecdsa_secp256r1_sha256`][26], 2
+- signature type `0x0403` [for `ecdsa_secp256r1_sha256`][26] (2
   bytes)
-- signature length (`0x40`, 2 bytes)
+- signature length `0x40` (2 bytes)
 - signature data (64 bytes)
 
 The server Finished message is used by the server to tell the client that it
@@ -689,9 +707,9 @@ is determined:
    |           | CertificateRequest      |                             |
 ```
 
-So, we are to use the server handshake secret as the `BaseKey`. Recall that we
-derived this secret in Phase 3. Upon recieving the server Finished message, the
-client needs to determine whether it is valid. It can do this by independently
+We use the server handshake secret as the `BaseKey`. Recall that we derived
+this secret in Phase 3. Upon recieving the server Finished message, the client
+needs to determine whether it is valid. It can do this by independently
 computing what it believes to be the correct server Finished transcript hash,
 computing HMAC over that transcript using the server's handshake secret (as
 above), and comparing its expected server Finished against the actual server
@@ -756,343 +774,33 @@ The client Finished message should be given in the following format:
 - verify data (size of HMAC-SHA256 output, 32 bytes)
 
 
-### Phase 6: Application Data
-
-Coming Soon!
-
-
-### Phase 7: Putting It All Together
-
-Coming Soon!
-
-
 # Scaffolding Problems
 
-Byte arrays (referred to as `bytes` below) are given hex-encoded JSON strings
-below, but the actual assignment will use BSON for stdin/stdout IO and `bytes`
-objects for python auto-import grading. Likewise with the output bytes in the
-example outputs.
+[`project.py`](./project.py) contains a number of stubs and utility functions
+that you may use (or port over to your langauge of choice) in building your
+soluiton. A subset of these functions are intended as "scaffolding" to guide
+your implmeentation as you build it. The scaffolding problems are not used in
+the TLS connection itself, but can be used to verify your solution's soundness
+for each stage of the handshake.
 
-**DISCLAIMER:** At the time of this writing (10/7/2022), the scaffolding
-problems below are still being implemented in the autograder, and are subject
-to change pending finalization. We will notify the class and remove this
-disclaimer when they're finalized (although, as always, Gradescope is the
-ultimate "source of truth"). Until then, please update your local copy of this
-specification regularly and keep an eye on #general for GitHub notifications
-about updates to this repo.
+They are imported and executed automatically from python submissions.
+Submissions in other languages may recieve their BSON-encoded input over stdin
+and return BSON-encoded output over stdout, much like the problem sets.
 
-## Phase 0: Values, Messages, and Records
-
-1. `encoding` sub-problems:
-    1. `uint32(x: int) -> bytes`: record-encode `x` as a 32-bit unsigned
-       integer
-    1. `uint8(x: int) -> bytes`: record-encode `x` as a 8-bit unsigned integer
-    1. `uint16(x: int) -> bytes`: record-encode `x` as a 16-bit unsigned
-       integer
-    1. `byte_vectors(vecs: List[bytes]) -> List[bytes]`: record-encode vector
-       in `vecs` as a variable-length vector
-1. `record_header(record_type: bytes, version: bytes, size: int) -> bytes`:
-   given `record_type` and `version` produce a record header for a record of
-   size `size`.
-1. `handshake_message_header(message_type: bytes, size: int) -> bytes`: for a
-   given `message_type`, produce a handshake message header for a message of
-   size `size`.
-
-TODO: add a few _inverse_ problems here -- given encoded values, return the decoded representation of those values
-TODO: include question requiring student to record-encode random input as a handshake message record
-TODO: given a few unencoded values, have them encode the values per spec then encode their concatenation as a message, then encode that message as a record.
-
-## Phase 1: Present client Hello
-
-1. `client_version() -> bytes`: return the encoded client version
-1. `client_random(size: int) -> bytes`: return `size` encodeded random bytes
-1. `legacy_session_id() -> bytes`: return the encoded legacy session id
-1. `supported_cipher_suites() -> bytes`: return the encoded supported cipher
-   suite
-1. `legacy_compression_methods() -> bytes`: return the encoded legacy
-   compression methods
-1. `extensions_length() -> bytes`: return the encoded length of extensions
-    - NOTE: this must correspond to the sum of the responses to the
-      `extensions` subproblems below. in other words, sum up the length of each
-      of the encoded extensions, and return the properly encoded value of that
-      sum. consult the spec for how many bytes are needed to encode this value.
-1. `extensions` sub-problems (NOTE: these must be TLV-encoded as discussed in
-   the spec):
-    1. `supported_versions() -> bytes`: retrun the encoded supported version
-    1. `server_name(name: str) -> bytes`: convert string `name` into encoded
-       and padded-out server name extension value
-        - NOTE: the `name` input is a normal string, and is not hex-encoded
-    1. `supported_groups() -> bytes`:  return the encoded supported kex group
-    1. `key_share() -> bytes`: generate a client key share, encode it, and
-       return it
-
-## Phase 2: Validate server Hello
-
-1. `legacy_version(candidate: bytes) -> bool`: return true if `candidate` is
-   valid, else false
-1. `server_random(candidate: bytes) -> bool`: return true if `candidate` is
-   valid (i.e. the correct size), else false
-1. `legacy_session_id_echo(candidate: bytes) -> bool`: return true if
-   `candidate` is valid, else false
-1. `legacy_compression_method(candidate: bytes) -> bool`: return true if
-   `candidate` is valid, else false
-1. `extensions_length(candidate: bytes) -> bool`: return true if `candidate` is
-   valid, else false
-    - NOTE: this must correspond to the sum of the lengths of the provided
-      extensions candidates detailed below
-1. `extensions` sub-problems:
-    1. `supported_versions(candidate: bytes) -> bool`: return true if
-       `candidate` is valid, else false
-    1. `key_share(candidate: bytes) -> bool`: return true if `candidate` is
-       valid, else false
-
-## Phase 3: Calculate Session Secrets
-
-1. `hkdf_extract(salt: bytes, keying_material: bytes) -> bytes`: return the
-   output of calling `HKDF-Extract` on `salt` and `keying_material`.
-1. `hkdf_expand(key: bytes, context: bytes, out_len: bytes) -> bytes`: return
-   the output of calling `HKDF-Expand` on `key` and `context` truncated at
-   `out_len` bytes
-1. `transcript_hash(hash_algorithm: str, messages: List[bytes])`: return a
-   transcript hash over `messages` using `hash_algorithm`.
-    - NOTE: `hash_algorithm` will only ever be `SHA256` in this assignment
-    - NOTE: each `bytes` object in `messages` **will contain Record headers**
-      that you'll need to strip out before digesting.
-1. `hkdf_expand_label(secret: bytes, label: bytes, context: bytes, length: int)
-   -> bytes` return the output of `HKDF-Expand-Label` called on the given input.
-1. `derive_secret(secret: bytes, label: bytes, messages: List[bytes]) -> bytes`
-   return the output of `Derive-Secret` called on the given inputs.
-    - NOTE: each `bytes` object in `messages` **will contain Record headers**
-      that you'll need to strip out before digesting.
-    - NOTE: you'll need to construct the HkdfLabel struct from the `label`
-      input yourself as described in section [7.1 of RFC-8446][18].
-1. `compute_secrets(client_hello: bytes, server_hello: bytes) -> ...`:
-    1. `shared_secret`: shared secret computed with ECDHE given client and
-       server keyshares
-    1. `early_secret`: pre-computable (i.e. invariant) Early Secret
-    1. `handshake_secret`: output of `HKDF-Extract` salted by `early_secret`
-       and keyed with `shared_secret`
-    1. `client_handshake_secret`: output of `Derive-Secret` keyed by
-       `handshake_secret` with label `c hs traffic` and a `Transcript-Hash`
-       over all prior messages.
-    1. `server_handshake_secret`: output of `Derive-Secret` keyed by
-       `handshake_secret` with label `s hs traffic` and a `Transcript-Hash`
-       over all prior messages.
-    1. `master_secret`: output of `HKDF-Extract` salted by
-       `Derive-Secret(handshake_secret, ...)` and keyed with `0`
-
-## Phase 4: Validate server Finished, server Certificate, and CertificateVerify
-
-Coming Soon!
-
-## Phase 5: Present client Finished
-
-Coming Soon!
-
-## Phase 6: Application Data
-
-Coming Soon!
-
-## Phase 7: Putting It All Together
-
-TODO: all of these must be record encoded
-
-Coming Soon!
-
-## Example Input
-
-```json
-{
-    "phase0": {
-        "encoding": {
-            "uint32": 7,
-            "uint8": 0,
-            "uint16": 11,
-            "byte_vectors": [
-                "ffffff",
-                "010101"
-            ]
-        },
-        "record_header": {
-            "record_type": "16",
-            "version": "0304",
-            "size": 200
-        },
-        "handshake_message_header": {
-            "message_type": "01",
-            "size": 200
-        }
-    },
-    "phase1": {
-        "client_version": null,
-        "client_random": 32,
-        "legacy_session_id": null,
-        "supported_cipher_suites": null,
-        "legacy_compression_methods": null,
-        "extensions_length": null,
-        "extensions": {
-            "supported_versions": null,
-            "server_name": "localhost",
-            "supported_groups": null,
-            "key_share": null
-        }
-    },
-    "phase2": {
-        "legacy_version": "0303",
-        "server_random": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        "legacy_session_id_echo": "00",
-        "cipher_suite": "021301",
-        "legacy_compression_method": "00",
-        "extensions_length": "TODO",
-        "extensions": {
-            "supported_versions": "002b0003020304",
-            "key_share": "TODO"
-        }
-    },
-    "phase3": {
-        "hkdf_extract": {
-            "salt": "TODO",
-            "keying_material": "TODO"
-        },
-        "hkdf_expand": {
-            "key": "TODO",
-            "context": "TODO",
-            "out_len": 0
-        },
-        "transcript_hash": {
-            "hash_algorithm": "SHA256",
-            "messages": [
-                "TODO client Hello",
-                "TODO server Hello"
-            ]
-        },
-        "hkdf_expand_label": {
-            "secret": "TODO",
-            "label": "TODO",
-            "context": "TODO",
-            "length": 0
-        },
-        "derive_secret": {
-            "secret": "TODO",
-            "label": "TODO",
-            "messages": ["TODO"]
-        },
-        "compute_secrets": {
-            "client_hello": "TODO",
-            "server_hello": "TODO"
-        }
-    },
-    "phase4": {"TODO": true},
-    "phase5": {"TODO": true},
-    "phase6": {"TODO": true},
-    "phase7": {"TODO": true}
-}
-```
-
-## Example Output
-
-**DISCLAIMER:** At the time of this writing (10/7/2022), some of the sample
-output below is hand-written and thus subject to minor, potential inaccuracies.
-This disclaimer will be removed once sample outputs are populated with
-programmatically generated values, providing higher degrees of assurance.i We
-will notify the class and remove this disclaimer when they're finalized
-(although, as always, Gradescope is the ultimate "source of truth"). Until
-then, please update your local copy of this specificaiton regularly and keep an
-eye on #general for GitHub notifications about updates to this repo.
-
-```json
-{
-    "phase0": {
-        "encoding": {
-            "uint32": "00000007",
-            "uint8": "00",
-            "uint16": "000b",
-            "byte_vectors": [
-                "03ffffff",
-                "03010101"
-            ]
-        },
-        "record_header": "16030400c8",
-        "handshake_message_header": "010000c8"
-    },
-    "phase1": {
-        "client_version": "0303",
-        "client_random": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        "legacy_session_id": "00",
-        "supported_cipher_suites": "021301",
-        "legacy_compression_methods": "1000",
-        "extensions_length": "TODO",
-        "extensions": {
-            "supported_versions": "002b0003020304",
-            "server_name": "0000001a00180000096c6f63616c686f7374",
-            "supported_groups": "02001d",
-            "key_share": "TODO"
-        }
-    },
-    "phase2": {
-        "legacy_version": true,
-        "server_random": true,
-        "legacy_session_id_echo": true,
-        "cipher_suite": true,
-        "legacy_compression_method": true,
-        "extensions_length": true,
-        "extensions": {
-            "supported_versions": true,
-            "key_share": true
-        }
-    },
-    "phase3": {
-        "hkdf_extract": "TODO",
-        "hkdf_expand": "TODO",
-        "transcript_hash": "TODO",
-        "hkdf_expand_label": "TODO",
-        "derive_secret": "TODO",
-        "compute_secrets": {
-            "shared_secret": "TODO",
-            "early_secret": "TODO",
-            "handshake_secret": "TODO",
-            "client_handshake_secret": "TODO",
-            "server_handshake_secret": "TODO",
-            "master_secret": "TODO"
-        }
-    },
-    "phase4": {"TODO": true},
-    "phase5": {"TODO": true},
-    "phase6": {"TODO": true},
-    "phase7": {"TODO": true}
-}
-```
-
-## CLI
-
+# CLI
 
 ```
-$ ./project -h
-usage: ./project [-h] [-v] [-c <trust_store_path> <server_hostname> <port>]
+$ ./project.py -h
+usage: TLS1.3 basic client [-h] [--cafile CAFILE] [--ip IP] [-i] url
 
-If no options are specified, operate in scaffolding mode, and recieve
-communicate scaffolding input/output over stdin/stdout (bson-encoded) or, if
-you're using python, expect your various `phase` functions to be auto-imported
-and evaluated by the autograder.
+positional arguments:
+  url              URL to send request to
 
-
-In client mode, you and initiate a TLS 1.3
-connection to <server_hostname> on <port>. Challenge input should be read as
-raw bytes from stdin and the challenge response's signature should be written
-to stdout.
-
--c  operate in client mode, the required parameters are:
-
-    <trust_store_path>  path to the DER-encoded (`.crt` in OpenSSL-land) trust
-                        store
-    <server_hostname>   hostname to connect to
-    <server_port>       port to connect to
-
-
--h  show this help message and exit
-
--v  verbose logging of handshake steps, optional to implement but will help
-    with debugging.
+options:
+  -h, --help       show this help message and exit
+  --cafile CAFILE  Path to CA cert file in PEM format
+  --ip IP          Do not resolve hostname but instead connect to this ip
+  -i, --include    Include response http headers
 ```
 
 
@@ -1132,3 +840,4 @@ to stdout.
 [33]: https://www.rfc-editor.org/rfc/rfc8446#section-5
 [34]: https://www.rfc-editor.org/rfc/rfc8446#section-4
 [35]: https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value
+[36]: https://www.rfc-editor.org/rfc/rfc8446#section-4.4.1
