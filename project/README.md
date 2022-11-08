@@ -1,12 +1,37 @@
-# Desription
+# TLS 1.3 Project
+
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [Desription](#desription)
+- [Resources](#resources)
+- [Specification](#specification)
+  - [Phases](#phases)
+    - [Phase 0: Values, Messages, and Records](#phase-0-values-messages-and-records)
+      - [Values and Types](#values-and-types)
+      - [Type-Length-Value Encoding](#type-length-value-encoding)
+      - [Messages](#messages)
+      - [Records](#records)
+    - [Phase 1: Present client Hello](#phase-1-present-client-hello)
+    - [Phase 2: Validate server Hello](#phase-2-validate-server-hello)
+    - [Phase 3: Calculate Handshake Secrets](#phase-3-calculate-handshake-secrets)
+    - [Phase 4: Validate server: Certificate, CertificateVerify, and Finished](#phase-4-validate-server-certificate-certificateverify-and-finished)
+    - [Phase 5: Present client Finished](#phase-5-present-client-finished)
+- [Scaffolding Problems](#scaffolding-problems)
+- [Examples](#examples)
+- [CLI](#cli)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+## Desription
 
 Standardized [a few years ago][1], TLS 1.3 marks a drastic reform of prior TLS
 versions. The principle themes of 1.3 are simplification, RTT reduction, and
-rescricting ciphersuite support in accordance with contemporary cryptographic
+restricting ciphersuite support in accordance with contemporary cryptographic
 best practices. TLS 1.3 simultaneously simplifies the protocol and improves
 performance by reducing round trips at the TLS layer from 3 to 2 during the
 handshake. This is accomplished by the client sending a "guess" of supported
-ciphersuites in the client Hello, along with KeyShare iformation. If the the
+ciphersuites in the client Hello, along with KeyShare information. If the
 client has guessed correctly, the server can utilize the client's KeyShare and
 immediately send its own KeyShare and certificate in its server Hello. At this
 point, we've only burned one round trip, and the client is ready to send its
@@ -27,34 +52,68 @@ implementation.
 
 The client will, however, need to validate the server certificate, checking for
 things like expiration, signature validity, etc. The client will also implement
-some TLS extensions such as Supported Versions (required in TLS 1.3), Key Share
-(also rquired), and Server Name Indication ("SNI"). SNI is used to specify
-which domain a client is attempting to connect to on a server that hosts
-multiple domains (such as a load balancer in a cloud environment). SNI is very
-simple to implement, as it only requires adding an additional field to the
-client Hello message.
+some TLS extensions:
 
-# Resources
+- Supported Versions (required in TLS 1.3)
+
+- Key Share (also required)
+
+- Server Name Indication ("SNI")
+
+  SNI is used to specify which domain a client is attempting to connect to on a server that hosts
+  multiple domains (such as a load balancer in a cloud environment). SNI is very
+  simple to implement, as it only requires adding an additional field to the
+  client Hello message.
+
+- Supported Groups
+
+  Supported groups specifies which groups client supports for the key exchange.
+  We will only support x25519 group.
+
+- Supported Signatures
+
+  Supported signatures specifies which signatures client supports for
+  certificate validation.
+
+## Resources
 
 - [TLS 1.3 RFC][1]
 - [The Illustrated TLS 1.3 Connection][2]
 - [A Detailed Look at RFC 8446 (a.k.a. TLS 1.3)][3]
 - [online ASN.1 encoder/decoder][6]
+- [full handshake test vectors][37]
 
 Diagrams illustrating the format of client Hello message, Supported Versions
 Extension, and Key Share Extension:
 
+<details>
+<summary>Client Hello</summary>
+
 ![](./img/client_hello.png)
+
+</details>
+
+<details>
+<summary>Supportted Versions</summary>
+
 ![](./img/supported_versions.png)
+
+</details>
+
+<details>
+<summary>Key Share</summary>
+
 ![](./img/key_share.png)
 
-# Specification
+</details>
 
-## Phases
+## Specification
 
-### Phase 0: Values, Messages, and Records
+### Phases
 
-#### Values and Types
+#### Phase 0: Values, Messages, and Records
+
+##### Values and Types
 
 This phase will cover the basic building blocks of TLS as a protocol: _values_,
 _messages_, and _records_. First we'll discuss values and their types, followed
@@ -87,7 +146,7 @@ also important, but are less salient and novel so we'll cover them implicitly
 in the following phases as the need arises.
 
 Number types are fixed-size and given in big-endian (i.e. the leftmost bit is
-the most significant bit), with a few of them [defined a priori][8]:
+the most significant bit), with a few of them [defined as][8]:
 
 - `uint8`: unsigned 8-bit integer (like an usigned `char` in C)
 - `uint16`: unsigned 16-bit integer
@@ -116,16 +175,16 @@ Some examples of number and vector types:
   encoded as `0x0400010204`
 - a 6-byte fixed-length vector of incrementing byte values starting at `01` is
   encoded as `0x010203040506`
-    - note that the length is **not encoded** in fixed-length vectors
+  - note that the length is **not encoded** in fixed-length vectors
 
-#### Type-Length-Value Encoding
+##### Type-Length-Value Encoding
 
 [Type-length-value ("TLV") encoding][35] is a class of encoding schemes where
 data are defined as logical "tuples" consisting of:
 
 1. type
 1. length
-3. value
+1. value
 
 This sub-section won't spend much time discussing these, as the [wikipedia
 page][35] already does a very good job of this, and yes, because they _really
@@ -134,7 +193,7 @@ well-defined. We will see and implement many instances of TLV encoding (record
 encoding, handshake message encoding, extension encoding, and on and on), so be
 sure you're familiar with the general idea.
 
-#### Messages
+##### Messages
 
 Logical steps in the TLS protocol are captured by _messages_. Messages are
 composed of one or more values that are interpreted differently depending on
@@ -150,30 +209,32 @@ defines the following handshake message types as an enumerated with their
 decimal values in parenthesis:
 
 ```
-          client_hello(1),
-          server_hello(2),
-          new_session_ticket(4),
-          end_of_early_data(5),
-          encrypted_extensions(8),
-          certificate(11),
-          certificate_request(13),
-          certificate_verify(15),
-          finished(20),
-          key_update(24),
-          message_hash(254),
+client_hello(1),
+server_hello(2),
+new_session_ticket(4),
+end_of_early_data(5),
+encrypted_extensions(8),
+certificate(11),
+certificate_request(13),
+certificate_verify(15),
+finished(20),
+key_update(24),
+message_hash(254),
 ```
 
 We will only consider the following messages, with their value given in hex:
 
 - `client_hello`: `0x01`
 - `server_hello`: `0x02`
+- `encryptetd_extensions: 0x08`
 - `certificate`: `0x0b`
 - `certificate_verify`: `0x0f`
 - `finished`: `0x14`
+- `new_session_ticket: 0x04`
 
 We'll cover the format of each of these in subsequent phases.
 
-#### Records
+##### Records
 
 Just as messages contain values, records contain messages. RFC-8446 defines a
 sub-protocol that it refers to as the ["record protocol"][33]. TLS _messages_
@@ -195,7 +256,7 @@ to modify their behavior based on the type, size, and protocol version of
 records. Record headers consist of 5 bytes, and are formatted like so:
 
 1. record type (1 byte)
-1. legacy protocol version (constant value of `0x0303`, 2 bytes)
+1. legacy protocol version (constant value of `0x0303` except in Client Hello `0x0301`, 2 bytes)
 1. record size (2 bytes)
 
 Section [5.1 of RFC-8446][27] defines record types (again, as an enum with
@@ -225,14 +286,12 @@ type can be determined and the message can be parsed.
 We'll also need to maintain running counters of records read and records
 written during a connection, as described in [section 5.3 of RFC-8446][28]:
 
-```
-   A 64-bit sequence number is maintained separately for reading and
-   writing records.  The appropriate sequence number is incremented by
-   one after reading or writing each record.  Each sequence number is
-   set to zero at the beginning of a connection and whenever the key is
-   changed; the first record transmitted under a particular traffic key
-   MUST use sequence number 0.
-```
+> A 64-bit sequence number is maintained separately for reading and
+> writing records. The appropriate sequence number is incremented by
+> one after reading or writing each record. Each sequence number is
+> set to zero at the beginning of a connection and whenever the key is
+> changed; the first record transmitted under a particular traffic key
+> MUST use sequence number 0.
 
 These counters will be used as our record nonces for generating unique
 per-record IVs for record encryption and decryption later on in the handshake.
@@ -241,7 +300,7 @@ see encrypted handshake messages until Phase 4, so we will defer diving into
 the [record payload protection][22] (i.e. `application_data`-type record
 encryption/decryption) scheme until then.
 
-### Phase 1: Present client Hello
+#### Phase 1: Present client Hello
 
 In the first phase of the handshake, the client presents a client Hello message
 to the server. The format of the client Hello is described [in the RFC][4].
@@ -250,127 +309,326 @@ required for backwards compatibility of the protocol. The client Hello for this
 project wil consist of the following required fields (not including record and
 message headers), in order:
 
-1. client version (constant `0x0303`, 2 bytes)
-1. client random (32 bytes)
-1. unused legacy session ID (constant empty vector `0x00`, 1 bytes total)
-1. supported cipher suites (constant vector [`0x00021301`][7], 4 bytes total)
-    - NOTE: that for simplicity, the project will only support a single cipher
-      suite, `TLS_AES_128_GCM_SHA256` (`0x1301`).
-1. unused legacy compression methods (constant vector `0x0100`, 2 bytes)
-1. extensions length (2 bytes)
-1. extensions (variable length, see below)
+1. client version. For example:
+   ```
+   TLS12                       0000: 03 03
+   ```
+1. client random (32 bytes). For example:
+   ```
+   random                      0000: 8b 44 79 1f bf 08 a5 da 55 eb c5 46 b3 34 18 20
+                               0016: 66 e2 f3 5c 02 c2 41 c1 37 3a 11 2b 4c b0 c2 2f
+   ```
+1. unused legacy session ID vector (must be non-empty value). For example:
+   ```
+   length                      0000: 14
+   session id                  0000: de f7 4c 1f 06 01 a3 e5 c0 e5 7b 47 d9 93 af 69
+                               0016: 4e 2e ba 02
+   ```
+1. supported cipher suites vector. For example:
+
+   ```
+   length                      0000: 00 02
+   TLS_AES_128_GCM_SHA256      0000: 13 01
+   ```
+
+   - NOTE: that for simplicity, the project will only support a single cipher
+     suite, `TLS_AES_128_GCM_SHA256` (`0x1301`).
+
+1. unused legacy compression methods. For example:
+   ```
+   length                      0000: 01
+   NULL                        0000: 00
+   ```
+1. extensions vector. For example:
+
+```
+   length                      0000: 00 5b
+   <Extension>
+   ...
+   </Extension>
+   ...
+```
 
 Each extension is encoded as follows:
 
-1. extension type (2 bytes)
-1. extension data length (2 bytes)
-1. extension data (given by ibid.)
+1. extension type (2 bytes). For example:
+   ```
+   SUPPORTED_VERSIONS          0000: 00 2b
+   ```
+1. extension data length (2 bytes). For example:
+   ```
+   length                      0000: 00 03
+   ```
+1. extension data (given by RFC structure definition). For supported versions extension:
+   ```
+   length                      0000: 02
+   TLS13                       0000: 03 04
+   ```
 
 The client Hello must also include the following extensions in the format
 described [in the RFC][5]:
 
-1. [supported versions][10] (constant value of `0x002b0003020304`, 7 bytes total)
-    - extension type `0x002b` (2 bytes)
-    - extension len `0x0003` (2 bytes)
-    - versions len `0x02` (1 byte)
-    - version `0x0304` (2 bytes)
-1. [server name][14] (variable length, < (2^8)^2 == 65536)
-    - extension type `0x0000` (2 bytes)
-    - extension len `0x..` (2 bytes)
-    - names len `0x..` (2 bytes, there will only be one entry, this is the len
-      of all proceeding bytes)
-    - entry type `0x00`, indicates hostname (1 byte)
-    - hostname len, `0x..` (2 bytes)
-    - hostname `0x..` (variable length)
-1. [supported groups][11] (constant vector `0x000a00040002001d`, 8 bytes)
-    - extension type `0x000a` (2 bytes)
-    - extension len `0x0004` (2 bytes)
-    - groups len `0x0002` (2 bytes)
-    - group x25519 `0x001d` (2 bytes)
-        - NOTE: for simplicity, the project will only support a single curve
-      [x25519][12].
-1. [key share][13] (42 bytes)
-    - extension type `0x0033` (2 bytes)
-    - extension len `0x0026` (2 bytes)
-    - key share len `0x0024` (2 bytes)
-    - kex group ID `0x001d` i.e. x25519 (2 bytes)
-    - public key len `0x0020` i.e. 32 in base-10 (2 bytes)
-    - public key `0x..` (32 bytes)
+- [supported versions][10]. For example:
+  ```
+  <Extension>
+  SUPPORTED_VERSIONS          0000: 00 2b
+  length                      0000: 00 03
+  length                      0000: 02
+  TLS13                       0000: 03 04
+  </Extension>
+  ```
+- [server name][14]. For example:
+  ```
+  <Extension>
+  SERVER_NAME                 0000: 00 00
+  length                      0000: 00 16
+  length                      0000: 00 14
+  HOST_NAME                   0000: 00
+  length                      0000: 00 11
+  hostname                    0000: 63 73 2d 67 79 36 39 30 33 2e 6e 79 75 2e 65 64
+                              0016: 75
+  </Extension>
+  ```
+- [supported groups][11]. For example:
+  ```
+  <Extension>
+  SUPPORTED_GROUPS            0000: 00 0a
+  length                      0000: 00 04
+  length                      0000: 00 02
+  X25519                      0000: 00 1d
+  </Extension>
+  ```
+  - NOTE: for simplicity, the project will only support a single curve
+    [x25519][12].
+- [key share][13]. For example:
+  ```
+  <Extension>
+  KEY_SHARE                   0000: 00 33
+  length                      0000: 00 26
+  length                      0000: 00 24
+  X25519                      0000: 00 1d
+  length                      0000: 00 20
+  x25519 public key           0000: 0e 2b 35 f1 ae 56 26 d9 b2 2c c5 ed 54 01 65 67
+                              0016: a1 0e 7e c8 c3 e0 e3 a3 20 c6 9f 50 73 57 9c 77
+  </Extension>
+  ```
+- [signature algorithms][38]. For example:
+  ```
+  <Extension>
+  SIGNATURE_ALGORITHMS        0000: 00 0d
+  length                      0000: 00 04
+  length                      0000: 00 02
+  ECDSA_SECP256R1_SHA256      0000: 04 03
+  </Extension>
+  ```
+  - NOTE: for simplicity, the projject will only support a single ECDSA curve
 
-### Phase 2: Validate server Hello
+<details>
+<summary>Putting it all together. Full annotated Client Hello record:</summary>
 
-In the next step of the handshake, the server sends its server Hello to the
-client, followed by (or perhaps concurrently to) its server Finished message
-and encrypted server Certificate record.
+```
+<Record>
+HANDSHAKE                   0000: 16
+TLS10                       0000: 03 01
+length                      0000: 00 9e
+CLIENT_HELLO                0000: 01
+length                      0000: 00 00 9a
+TLS12                       0000: 03 03
+random                      0000: 8b 44 79 1f bf 08 a5 da 55 eb c5 46 b3 34 18 20
+                            0016: 66 e2 f3 5c 02 c2 41 c1 37 3a 11 2b 4c b0 c2 2f
+length                      0000: 14
+session id                  0000: de f7 4c 1f 06 01 a3 e5 c0 e5 7b 47 d9 93 af 69
+                            0016: 4e 2e ba 02
+length                      0000: 00 02
+TLS_AES_128_GCM_SHA256      0000: 13 01
+length                      0000: 01
+NULL                        0000: 00
+length                      0000: 00 5b
+<Extension>
+SUPPORTED_VERSIONS          0000: 00 2b
+length                      0000: 00 03
+length                      0000: 02
+TLS13                       0000: 03 04
+</Extension>
+<Extension>
+SUPPORTED_GROUPS            0000: 00 0a
+length                      0000: 00 04
+length                      0000: 00 02
+X25519                      0000: 00 1d
+</Extension>
+<Extension>
+SIGNATURE_ALGORITHMS        0000: 00 0d
+length                      0000: 00 04
+length                      0000: 00 02
+ECDSA_SECP256R1_SHA256      0000: 04 03
+</Extension>
+<Extension>
+KEY_SHARE                   0000: 00 33
+length                      0000: 00 26
+length                      0000: 00 24
+X25519                      0000: 00 1d
+length                      0000: 00 20
+x25519 public key           0000: 0e 2b 35 f1 ae 56 26 d9 b2 2c c5 ed 54 01 65 67
+                            0016: a1 0e 7e c8 c3 e0 e3 a3 20 c6 9f 50 73 57 9c 77
+</Extension>
+<Extension>
+SERVER_NAME                 0000: 00 00
+length                      0000: 00 16
+length                      0000: 00 14
+HOST_NAME                   0000: 00
+length                      0000: 00 11
+hostname                    0000: 63 73 2d 67 79 36 39 30 33 2e 6e 79 75 2e 65 64
+                            0016: 75
+</Extension>
+</Record>
+```
+
+</details>
+
+#### Phase 2: Validate server Hello
+
+In the next step of the handshake, the server sends its response(s) back to the
+client - Server Hello message, other handshake messages configuring crypto
+context for the TLS channel as well as validating server integrity/authenticity
+and finally wrapping up with Finished message.
 
 The [server Hello message][15] is given in the following format (not including
 record and message headers):
 
-1. unused legacy server version (constant value of `0x0303`, 2 bytes)
+1. unused legacy server version. For example:
+   ```
+   TLS12                       0000: 03 03
+   ```
 1. server random (32 bytes)
-1. unused legacy session ID echo (echoes whatever client sent, i.e. `0x00`, 1
-   byte)
-1. cipher suite selection (constant value [`0x1301`][7], 2 bytes total)
-    - NOTE: this is the server's _selection_, so it's a singular value rather
-      than a list as in the client Hello.
-1. unused legacy compression method selection (constant value `0x00`, 1 bytes)
-1. extensions length (2 bytes)
-1. extensions (49 bytes, see below)
+   ```
+   random                      0000: ee ad ba de 7c f4 f0 64 b3 af 02 23 60 0f 43 14
+                               0016: 7c 9c a8 31 2a c2 80 fc e6 75 cb a4 6d bf 46 7c
+   ```
+1. unused legacy session ID vector echo (echoes whatever client sent). For example:
+   ```
+   length                      0000: 14
+   session id                  0000: de f7 4c 1f 06 01 a3 e5 c0 e5 7b 47 d9 93 af 69
+                               0016: 4e 2e ba 02
+   ```
+1. cipher suite selection (constant value [`0x1301`][7]). For example:
+   ```
+   TLS_AES_128_GCM_SHA256      0000: 13 01
+   ```
+   - NOTE: this is the server's _selection_, so it's a singular value rather
+     than a list as in the client Hello.
+1. unused legacy compression method selection (constant value `0x00`). For example:
+   ```
+   NULL                        0000: 00
+   ```
+   - NOTE: this is also a server selection so it is a single value.
+1. extensions vector. For example:
+   ```
+   length                      0000: 00 2e
+   <Extension>
+   ...
+   </Extension>
+   ...
+   ```
 
 While the RFC requires special treatment by the client if it [encounters the
 following value of Server Random][15], to keep things simple we will not
 require this behavior:
 
->   For reasons of backward compatibility with middleboxes (see
->   Appendix D.4), the HelloRetryRequest message uses the same structure
->   as the server Hello, but with Random set to the special value of the
->   SHA-256 of "HelloRetryRequest":
+> For reasons of backward compatibility with middleboxes (see
+> Appendix D.4), the HelloRetryRequest message uses the same structure
+> as the server Hello, but with Random set to the special value of the
+> SHA-256 of "HelloRetryRequest":
 >
 >     CF 21 AD 74 E5 9A 61 11 BE 1D 8C 02 1E 65 B8 91
 >     C2 A2 11 16 7A BB 8C 5E 07 9E 09 E2 C8 A8 33 9C
 >
->   Upon receiving a message with type server_hello, implementations MUST
->   first examine the Random value and, if it matches this value, process
->   it as described in Section 4.1.4).
+> Upon receiving a message with type server_hello, implementations MUST
+> first examine the Random value and, if it matches this value, process
+> it as described in Section 4.1.4).
 
 The server Hello must include the following extensions in the format described
 [in the RFC][15]:
 
-1. [supported versions][10] (constant value of `0x002b00020304`, 6 bytes total)
-    - type `0x002b` (2 bytes)
-    - extension len `0x0002` (2 bytes)
-    - selected version `0x0304` (2 bytes)
-        + NOTE: this extension is a list in client Hello, but is a single value
-          in server Hello as it indicates the server's version selection.
-1. [key share][13] (42 bytes)
-    - type `0x0033` (2 bytes)
-    - extension len `0x0026` (2 bytes)
-    - key share len `0x0024` (2 bytes)
-    - kex group ID `0x001d` i.e. x25519 (2 bytes)
-    - public key len `0x0020` i.e. 32 in base-10 (2 bytes)
-    - public key `0x..` (32 bytes)
+1. [supported versions][10] (constant value of `0x002b00020304`, 6 bytes total). For example:
+   ```
+   <Extension>
+   SUPPORTED_VERSIONS          0000: 00 2b
+   length                      0000: 00 02
+   TLS13                       0000: 03 04
+   </Extension>
+   ```
+   - NOTE: this extension is a list in client Hello, but is a single value
+     in server Hello as it indicates the server's version selection.
+1. [key share][13] (42 bytes). For example:
+   ```
+   <Extension>
+   KEY_SHARE                   0000: 00 33
+   length                      0000: 00 24
+   X25519                      0000: 00 1d
+   length                      0000: 00 20
+   x25519 public key           0000: 86 ed 63 87 0d 3b 75 ad 7b 0a fe 10 fd 04 d1 54
+                               0016: 03 19 21 d1 39 4f 69 7d c1 c3 77 88 38 f4 ad 33
+   </Extension>
+   ```
 
-### Phase 3: Calculate Session Secrets
+<details>
+<summary>Putting it all together. Full annotated Server Hello record:</summary>
 
-Now that the client has generated its own keypair and has recieved that of the
-server, it's ready to calculate the session secrets. Section 4.2.8.2 of the RFC
+```
+<Record>
+HANDSHAKE                   0000: 16
+TLS12                       0000: 03 03
+length                      0000: 00 6e
+SERVER_HELLO                0000: 02
+length                      0000: 00 00 6a
+TLS12                       0000: 03 03
+random                      0000: ee ad ba de 7c f4 f0 64 b3 af 02 23 60 0f 43 14
+                            0016: 7c 9c a8 31 2a c2 80 fc e6 75 cb a4 6d bf 46 7c
+length                      0000: 14
+session id                  0000: de f7 4c 1f 06 01 a3 e5 c0 e5 7b 47 d9 93 af 69
+                            0016: 4e 2e ba 02
+TLS_AES_128_GCM_SHA256      0000: 13 01
+NULL                        0000: 00
+length                      0000: 00 2e
+<Extension>
+SUPPORTED_VERSIONS          0000: 00 2b
+length                      0000: 00 02
+TLS13                       0000: 03 04
+</Extension>
+<Extension>
+KEY_SHARE                   0000: 00 33
+length                      0000: 00 24
+X25519                      0000: 00 1d
+length                      0000: 00 20
+x25519 public key           0000: 86 ed 63 87 0d 3b 75 ad 7b 0a fe 10 fd 04 d1 54
+                            0016: 03 19 21 d1 39 4f 69 7d c1 c3 77 88 38 f4 ad 33
+</Extension>
+</Record>
+```
+
+</details>
+
+#### Phase 3: Calculate Handshake Secrets
+
+Now that the client has generated its own keypair and has received that of the
+server, it's ready to calculate the handshake secrets. Section 4.2.8.2 of the RFC
 [describes][16] how to interpret the keyshare's public key field for ECDHE
 under X25519:
 
->   For X25519 and X448, the contents of the public value are the byte
->   string inputs and outputs of the corresponding functions defined in
->   [RFC7748]: 32 bytes for X25519 and 56 bytes for X448.
+> For X25519 and X448, the contents of the public value are the byte
+> string inputs and outputs of the corresponding functions defined in
+> [RFC7748]: 32 bytes for X25519 and 56 bytes for X448.
 
 And RFC-7748 [describes][17] how we can use this public key value:
 
->   Using their generated values and the received input, Alice computes
->   X25519(a, K_B) and Bob computes X25519(b, K_A).
+> Using their generated values and the received input, Alice computes
+> X25519(a, K_B) and Bob computes X25519(b, K_A).
 >
->   Both now share K = X25519(a, X25519(b, 9)) = X25519(b, X25519(a, 9))
->   as a shared secret.  Both MAY check, without leaking extra
->   information about the value of K, whether K is the all-zero value and
->   abort if so (see below).  Alice and Bob can then use a key-derivation
->   function that includes K, K_A, and K_B to derive a symmetric key.
+> Both now share K = X25519(a, X25519(b, 9)) = X25519(b, X25519(a, 9))
+> as a shared secret. Both MAY check, without leaking extra
+> information about the value of K, whether K is the all-zero value and
+> abort if so (see below). Alice and Bob can then use a key-derivation
+> function that includes K, K_A, and K_B to derive a symmetric key.
 
 While it would be important to check for the zero-value in real-world
 implementations, we won't require that here.
@@ -380,6 +638,9 @@ We then use the shared secret (referred to as `K` above) and HKDF (as described
 to derive symmetric keys for encrypted portions of the handshake) and the
 Master Secret (used to derive symmetric keys for application traffic) via the
 [following scheme][18]:
+
+<details>
+<summary>Key Schedule</summary>
 
 ```
 01             0
@@ -431,13 +692,15 @@ Master Secret (used to derive symmetric keys for application traffic) via the
 47                                   = resumption_master_secret
 ```
 
+</details>
+
 Note that since we're not implementing the Pre-Shared Key (PSK) extension,
 we'll need to follow the guidance around using the 0 PSK as described
 [here][17]:
 
->   if PSK is not in use, Early Secret will still be HKDF-Extract(0, 0) ... if
->   no PSK is selected, it will then need to compute the Early Secret
->   corresponding to the zero PSK.
+> if PSK is not in use, Early Secret will still be HKDF-Extract(0, 0) ... if
+> no PSK is selected, it will then need to compute the Early Secret
+> corresponding to the zero PSK.
 
 This ends up working in our favor, however, because it means that we can
 precompute the value on line 15 that's fed into HKDF as a seed on line 18. It
@@ -450,58 +713,74 @@ Handshake Secret = HKDF-Extract(Derive-Secret(HKDF-Extract(0, 0), "derived", "")
 Master Secret = HKDF-Extract(Derive-Secret(Handshake Secret, "derived", ""), 0)
 ```
 
-Where `K` is the shared secret established via ECDH and `HKDF-Extract` is
-defined [like so][19]:
+Where `K` is the shared secret established via ECDH.
+
+`HKDF-Extract` is defined [like so][19]:
+
+<details>
+<summary>HKDF-Extract</summary>
 
 ```
-   HKDF-Extract(salt, IKM) -> PRK
+HKDF-Extract(salt, IKM) -> PRK
 
-   Options:
-      Hash     a hash function; HashLen denotes the length of the
-               hash function output in octets
+Options:
+  Hash     a hash function; HashLen denotes the length of the
+           hash function output in octets
 
-   Inputs:
-      salt     optional salt value (a non-secret random value);
-               if not provided, it is set to a string of HashLen zeros.
-      IKM      input keying material
+Inputs:
+  salt     optional salt value (a non-secret random value);
+           if not provided, it is set to a string of HashLen zeros.
+  IKM      input keying material
 ```
 
-and `Derive-Secret` is defined [like so][18]:
+</details>
+
+`Derive-Secret` is defined [like so][18]:
+
+<details>
+<summary>Derive-Secret</summary>
 
 ```
-       Derive-Secret(Secret, Label, Messages) =
-            HKDF-Expand-Label(Secret, Label,
-                              Transcript-Hash(Messages), Hash.length)
+Derive-Secret(Secret, Label, Messages) =
+    HKDF-Expand-Label(Secret, Label,
+                      Transcript-Hash(Messages), Hash.length)
 
-       HKDF-Expand-Label(Secret, Label, Context, Length) =
-            HKDF-Expand(Secret, HkdfLabel, Length)
+HKDF-Expand-Label(Secret, Label, Context, Length) =
+    HKDF-Expand(Secret, HkdfLabel, Length)
 
-       Where HkdfLabel is specified as:
+Where HkdfLabel is specified as:
 
-       struct {
-           uint16 length = Length;
-           opaque label<7..255> = "tls13 " + Label;
-           opaque context<0..255> = Context;
-       } HkdfLabel;
+struct {
+   uint16 length = Length;
+   opaque label<7..255> = "tls13 " + Label;
+   opaque context<0..255> = Context;
+} HkdfLabel;
 ```
+
+</details>
 
 `HKDF-Expand` is also defined in [RFC 5869][19] as:
 
-```
-   HKDF-Expand(PRK, info, L) -> OKM
+<details>
+<summary>HKDF-Expand</summary>
 
-   Options:
-      Hash     a hash function; HashLen denotes the length of the
-               hash function output in octets
-
-   Inputs:
-      PRK      a pseudorandom key of at least HashLen octets
-               (usually, the output from the extract step)
-      info     optional context and application specific information
-               (can be a zero-length string)
-      L        length of output keying material in octets
-               (<= 255*HashLen)
 ```
+HKDF-Expand(PRK, info, L) -> OKM
+
+Options:
+  Hash     a hash function; HashLen denotes the length of the
+           hash function output in octets
+
+Inputs:
+  PRK      a pseudorandom key of at least HashLen octets
+           (usually, the output from the extract step)
+  info     optional context and application specific information
+           (can be a zero-length string)
+  L        length of output keying material in octets
+           (<= 255*HashLen)
+```
+
+</details>
 
 In particular, note how the HkdfLabel is constructed from the Label, Context,
 and Length inputs to `HKDF-Expand-Label`. This will be needed later.
@@ -516,18 +795,18 @@ Note that, in general, when we're taking Message hashes, we're [_excluding_ the
 Record headers but _including_ the Message headers (as well as the Message
 contents)][36]:
 
->   This value is computed by hashing the concatenation of each included
->   handshake message, including the handshake message header carrying the
->   handshake message type and length fields, but not including record layer
->   headers.
->   ...
->   For concreteness, the transcript hash is always taken from the
->   following sequence of handshake messages, starting at the first
->   client Hello and including only those messages that were sent:
->   client Hello, HelloRetryRequest, client Hello, server Hello,
->   EncryptedExtensions, server CertificateRequest, server Certificate,
->   server CertificateVerify, server Finished, EndOfEarlyData, client
->   Certificate, client CertificateVerify, client Finished.
+> This value is computed by hashing the concatenation of each included
+> handshake message, including the handshake message header carrying the
+> handshake message type and length fields, but not including record layer
+> headers.
+> ...
+> For concreteness, the transcript hash is always taken from the
+> following sequence of handshake messages, starting at the first
+> client Hello and including only those messages that were sent:
+> client Hello, HelloRetryRequest, client Hello, server Hello,
+> EncryptedExtensions, server CertificateRequest, server Certificate,
+> server CertificateVerify, server Finished, EndOfEarlyData, client
+> Certificate, client CertificateVerify, client Finished.
 
 Additionally, note that for the purposes of this project we will not be
 sending/recieving any of:
@@ -538,10 +817,24 @@ sending/recieving any of:
 - client Certificate
 - client CertificateVerify
 
-At this point in the handshake, only the client Hello and server Hello will be
-available for the transcript.
+Eventually we will need to compute all of these keys:
 
-### Phase 4: Validate server: Certificate, CertificateVerify, and Finished
+```
+22             |                     = client_handshake_traffic_secret
+26             |                     = server_handshake_traffic_secret
+35             |                     = client_application_traffic_secret_0
+39             |                     = server_application_traffic_secret_0
+```
+
+At this point in the handshake, only the client Hello and server Hello will be
+available for the transcript. Therefore at this stage we can only compute
+handshake traffic secrets as we can only compute transcript hash of the hellos.
+Only after we receive and decrypt subsequent server handshake message,
+send client finished message, we will be able to compute rest of the
+applicaction traffic keys. The algorithm for computing them will be the same
+except the transcript hash to compute them will include more handshake messages.
+
+#### Phase 4: Validate server: Certificate, CertificateVerify, and Finished
 
 Now that both sides have exchanged their respective Hello messages and key
 shares, the rest of the handshake can be encrypted using keys derived from the
@@ -720,17 +1013,17 @@ To guide implementation of this running-hash-over-context (which comes up many
 times during the handshake), recall this excerpt from [section 4.4.1 of
 RFC-8446][21]:
 
->   In general, implementations can implement the transcript by keeping a
->   running transcript hash value based on the negotiated hash.  Note,
->   however, that subsequent post-handshake authentications do not
->   include each other, just the messages through the end of the main
->   handshake.
+> In general, implementations can implement the transcript by keeping a
+> running transcript hash value based on the negotiated hash. Note,
+> however, that subsequent post-handshake authentications do not
+> include each other, just the messages through the end of the main
+> handshake.
 
 The server Finished message is given in the following format:
 
 - verify data (size of HMAC-SHA256 output, 32 bytes)
 
-### Phase 5: Present client Finished
+#### Phase 5: Present client Finished
 
 The client Finished message performs a similar function as server Finished --
 it gives the server an authentic digest of the client's view of the handshake,
@@ -773,8 +1066,7 @@ The client Finished message should be given in the following format:
 
 - verify data (size of HMAC-SHA256 output, 32 bytes)
 
-
-# Scaffolding Problems
+## Scaffolding Problems
 
 [`project.py`](./project.py) contains a number of stubs and utility functions
 that you may use (or port over to your langauge of choice) in building your
@@ -787,9 +1079,35 @@ They are imported and executed automatically from python submissions.
 Submissions in other languages may recieve their BSON-encoded input over stdin
 and return BSON-encoded output over stdout, much like the problem sets.
 
-# CLI
+## Examples
 
-```
+[`examples.log`](./examples.log) contains a number of example handshakes against
+the same nginx TLS implementation that gradescope will use for grading, as well
+as a couple of popular public sites. For each handshake it shows:
+
+- x25519 private key used for the key exchange
+- all of the annotated encountered records from both client and server
+- server encrypted records as well as what they decrypted into
+- client plaintext records as well as what they encrypted into
+- http server response (most sites return a redirect)
+
+## Gradescope
+
+Gradescope has the following libraries pre-installed:
+
+- [cryptography](https://cryptography.io/en/latest/) (recommended library to use)
+- [certifi](https://github.com/certifi/python-certifi)
+- [pycryptodome](https://pypi.org/project/pycryptodome/)
+
+If you would like to install additional dependencies, feel free to do so in
+`setup.sh` with `pip install ...`.
+
+## CLI
+
+For python submissions `project.py` already includes a `main()` implementation
+which will convert `tls13_http_get` into a CLI. Here is what flags it supports:
+
+```sh
 $ ./project.py -h
 usage: TLS1.3 basic client [-h] [--cafile CAFILE] [--ip IP] [-i] url
 
@@ -802,8 +1120,6 @@ options:
   --ip IP          Do not resolve hostname but instead connect to this ip
   -i, --include    Include response http headers
 ```
-
-
 
 [1]: https://www.rfc-editor.org/rfc/rfc8446
 [2]: https://tls13.xargs.org/
@@ -841,3 +1157,5 @@ options:
 [34]: https://www.rfc-editor.org/rfc/rfc8446#section-4
 [35]: https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value
 [36]: https://www.rfc-editor.org/rfc/rfc8446#section-4.4.1
+[37]: https://datatracker.ietf.org/doc/rfc8448/
+[38]: https://www.rfc-editor.org/rfc/rfc8446#section-4.2.3
