@@ -5,6 +5,7 @@
 - [ps1](./ps1/) - introduction basics
 - [ps2](./ps2/) - Diffie-Hellman key agreement
 - [ps3](./ps3/) - hashing
+- [ps4](./ps4/) - unauthenticated block cipher modes
 
 ## Optional Assignments
 
