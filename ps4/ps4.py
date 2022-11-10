@@ -247,7 +247,7 @@ def problem5(plaintext: bytes, key: bytes, iv: bytes) -> bytes:
 
     Notes
     -----
-    Below is a diagram of CBC mode. To make ciphertexts indistinguishable under common
+    Below is a diagram of CBC mode. To make ciphertexts indistinguishable over common
     plaintexts, CBC XORs the previous block's ciphertext (or, the `iv` in the case of
     the 0th block) with the current block's plaintext before encrypting under AES. This
     makes each block's ciphertext dependent on the prior block's ciphertext (or `iv`),
