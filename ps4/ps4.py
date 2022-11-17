@@ -37,7 +37,7 @@ def problem1(data: bytes) -> bytes:
     https://en.wikipedia.org/wiki/Padding_(cryptography)#PKCS#5_and_PKCS#7
     https://www.rfc-editor.org/rfc/rfc5652#section-6.3
 
-    You must implement this yourself. Submissions using a library to compute the padding
+    You MUST implement this yourself. Submissions using a library to compute the padding
     will receive 0 points.
 
     Examples
@@ -71,7 +71,7 @@ def problem2(data: bytes) -> bytes:
     The key concept to note here is that the last byte of the input will **always** be
     equal to the length of the padding suffix you need to strip.
 
-    You must implement this yourself. Submissions using a library to strip the padding
+    You MUST implement this yourself. Submissions using a library to strip the padding
     will receive 0 points.
 
     Examples
@@ -142,7 +142,11 @@ def problem3(plaintext: bytes, key: bytes) -> bytes:
     explanation: https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Electronic_codebook_(ECB)
 
     The input `plaintext`'s length may be indivisible by the AES block size (16 bytes),
-    so you must PKCS#7-pad plaintext before encrypting.
+    so you MUST PKCS#7-pad plaintext before encrypting.
+
+    You MAY use a library's implementation of AES in ECB mode for this problem, but you
+    MUST loop over the input plaintext block-by-block to encrypt. Submissions encrypting
+    the entire plaintext in one shot will receive 0 points.
 
     ┌────────────────┐  ┌────────────────┐       ┌────────────────┐
     │  plaintext[0]  │  │  plaintext[1]  │  ...  │  plaintext[n]  │
@@ -192,7 +196,11 @@ def problem4(ciphertext: bytes, key: bytes) -> bytes:
     ECB decryption looks very similar to encryption; it just uses the decrypt PRP of
     the AES cipher.
 
-    You must strip PKCS#7 padding before returning the plaintext.
+    You MUST strip PKCS#7 padding before returning the plaintext.
+
+    You MAY use a library's implementation of AES in ECB mode for this problem, but you
+    MUST loop over the input ciphertext block-by-block to decrypt. Submissions
+    decrypting the entire ciphertext in one shot will receive 0 points.
 
     ┌────────────────┐  ┌────────────────┐       ┌────────────────┐
     │ ciphertext[0]  │  │ ciphertext[1]  │  ...  │ ciphertext[n]  │
@@ -247,16 +255,16 @@ def problem5(plaintext: bytes, key: bytes, iv: bytes) -> bytes:
 
     Notes
     -----
-    Below is a diagram of CBC mode. To make ciphertexts indistinguishable over common
+    Below is a diagram of CBC mode. To make ciphertexts indistinguishable under common
     plaintexts, CBC XORs the previous block's ciphertext (or, the `iv` in the case of
     the 0th block) with the current block's plaintext before encrypting under AES. This
     makes each block's ciphertext dependent on the prior block's ciphertext (or `iv`),
     providing better confidentiality than ECB, but making parallelization impossible.
 
-    You **MUST** use ECB mode of the AES cipher to implement this. Solutions using
-    library-provided CBC mode will receive 0 points.
-
     As with raw ECB, you need to PKCS#7-pad the plaintext before encrypting.
+
+    You MUST use ECB mode of the AES cipher to implement this. Solutions using
+    library-provided CBC mode will receive 0 points.
 
     ┌────────────────┐  ┌────────────────┐       ┌────────────────┐
     │  plaintext[0]  │  │  plaintext[1]  │  ...  │  plaintext[n]  │
@@ -312,10 +320,10 @@ def problem6(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     CBC decryption is similar to encryption, except the IV/last block is XOR'd with the
     current block _after_ the input block has been passed through the cipher.
 
-    You **MUST** use ECB mode of the AES cipher to implement this. Solutions using
-    library-provided CBC mode will receive 0 points.
+    As with raw ECB, you MUST strip PKCS#7 padding before returning the plaintext.
 
-    As with raw ECB, you must strip PKCS#7 padding before returning the plaintext.
+    You MUST use ECB mode of the AES cipher to implement this. Solutions using
+    library-provided CBC mode will receive 0 points.
 
     ┌────────────────┐  ┌────────────────┐       ┌────────────────┐
     │ ciphertext[0]  │  │ ciphertext[1]  │  ...  │ ciphertext[n]  │
@@ -372,9 +380,12 @@ def problem7(iv: bytes) -> bytes:
     unsigned integer, increment it, and reconstruct the new IV by appending the
     incremented counter to the nonce before returning.
 
-    The counter portion of the IV is subject to overflow. Your implementation must
+    The counter portion of the IV is subject to overflow. Your implementation MUST
     account for this. If the counter reaches its maximum value, the next increment needs
     to yield 0.
+
+    You MUST implement this logic yourself. Solutions using a library to increment will
+    receive 0 points.
 
     Examples
     --------
@@ -408,14 +419,14 @@ def problem8(plaintext: bytes, key: bytes, iv: bytes) -> bytes:
     ciphertext. In this way, AES CTR can be thought of (and even implemented) as a
     stream cipher.
 
-    You **MUST** use ECB mode of the AES cipher to implement this. solutions using
-    library-provided CTR mode will receive 0 points.
-
     As with CBC and raw ECB, you need to PKCS#7-pad plaintext when encrypting and strip
     same before returning when decrypting. Note that while padding is not generally
     required when AES CTR is used as a stream cipher, we do require it here. You're free
     to implement AES CTR as either a stream cipher or block cipher, but the grader will
     expect plaintext inputs to be padded to the AES block size.
+
+    You MUST use ECB mode of the AES cipher to implement this. Solutions using
+    library-provided CTR mode will receive 0 points.
 
                       Nonce     Counter                     Nonce     Counter
                       d9e6...  ...34020                     d9e6...  ...34021
@@ -464,6 +475,9 @@ def problem9(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     -----
     In the diagram below, note that **AES encryption** is used to generate the
     decryption key stream.
+
+    You MUST use ECB mode of the AES cipher to implement this. Solutions using
+    library-provided CTR mode will receive 0 points.
 
                       Nonce     Counter                     Nonce     Counter
                       d9e6...  ...34020                     d9e6...  ...34021

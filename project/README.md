@@ -882,7 +882,7 @@ RFC-8446][28]:
 
 We feed nonce into the AES cipher as an IV to decrypt records. Note that the
 sequence number must be incremented after each record in the handshake is sent
-or recieved.
+or received.
 
 So, what do we use for the `Secret` passed into `HKDF-Expand-Label`?
 Recall this excerpt from the graph in [section 7.1 of RFC-8446][18]:
@@ -1076,7 +1076,7 @@ the TLS connection itself, but can be used to verify your solution's soundness
 for each stage of the handshake.
 
 They are imported and executed automatically from python submissions.
-Submissions in other languages may recieve their BSON-encoded input over stdin
+Submissions in other languages may receive their BSON-encoded input over stdin
 and return BSON-encoded output over stdout, much like the problem sets.
 
 ## Examples
