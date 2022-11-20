@@ -6,19 +6,26 @@
 - [Desription](#desription)
 - [Resources](#resources)
 - [Specification](#specification)
-  - [Phases](#phases)
-    - [Phase 0: Values, Messages, and Records](#phase-0-values-messages-and-records)
-      - [Values and Types](#values-and-types)
-      - [Type-Length-Value Encoding](#type-length-value-encoding)
-      - [Messages](#messages)
-      - [Records](#records)
-    - [Phase 1: Present client Hello](#phase-1-present-client-hello)
-    - [Phase 2: Validate server Hello](#phase-2-validate-server-hello)
-    - [Phase 3: Calculate Handshake Secrets](#phase-3-calculate-handshake-secrets)
-    - [Phase 4: Validate server: Certificate, CertificateVerify, and Finished](#phase-4-validate-server-certificate-certificateverify-and-finished)
-    - [Phase 5: Present client Finished](#phase-5-present-client-finished)
+  - [Values, Messages, and Records](#values-messages-and-records)
+    - [Values and Types](#values-and-types)
+    - [Type-Length-Value Encoding](#type-length-value-encoding)
+    - [Messages](#messages)
+    - [Records](#records)
+  - [Client: Hello](#client-hello)
+  - [Server: Hello](#server-hello)
+  - [Client: Calculate Handshake Secrets](#client-calculate-handshake-secrets)
+  - [Server: Change Cipher Spec](#server-change-cipher-spec)
+  - [Server: Encrypted Extensions, Certificate, CertificateVerify, and Finished](#server-encrypted-extensions-certificate-certificateverify-and-finished)
+  - [Client: Calculate Server Application Key](#client-calculate-server-application-key)
+  - [Client: Change Cipher Spec](#client-change-cipher-spec)
+  - [Client: Finished](#client-finished)
+  - [Client: Calculate Client Application Key](#client-calculate-client-application-key)
+  - [Client: HTTP Request](#client-http-request)
+  - [Server: HTTP Response](#server-http-response)
 - [Scaffolding Problems](#scaffolding-problems)
 - [Examples](#examples)
+- [Gradescope](#gradescope)
+- [Nginx](#nginx)
 - [CLI](#cli)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -109,11 +116,9 @@ Extension, and Key Share Extension:
 
 ## Specification
 
-### Phases
+### Values, Messages, and Records
 
-#### Phase 0: Values, Messages, and Records
-
-##### Values and Types
+#### Values and Types
 
 This phase will cover the basic building blocks of TLS as a protocol: _values_,
 _messages_, and _records_. First we'll discuss values and their types, followed
@@ -177,7 +182,7 @@ Some examples of number and vector types:
   encoded as `0x010203040506`
   - note that the length is **not encoded** in fixed-length vectors
 
-##### Type-Length-Value Encoding
+#### Type-Length-Value Encoding
 
 [Type-length-value ("TLV") encoding][35] is a class of encoding schemes where
 data are defined as logical "tuples" consisting of:
@@ -193,7 +198,7 @@ well-defined. We will see and implement many instances of TLV encoding (record
 encoding, handshake message encoding, extension encoding, and on and on), so be
 sure you're familiar with the general idea.
 
-##### Messages
+#### Messages
 
 Logical steps in the TLS protocol are captured by _messages_. Messages are
 composed of one or more values that are interpreted differently depending on
@@ -204,7 +209,7 @@ The first 4 bytes of these messages constitute the _handshake header_:
 1. message size (3 bytes)
 
 Subsequent bytes comprise the handshake message itself. The message's format
-varies by type, as we'll see in Phases 1-5 below. [Section 4 of RFC-8446][34]
+varies by type, as we'll see in Phases below. [Section 4 of RFC-8446][34]
 defines the following handshake message types as an enumerated with their
 decimal values in parenthesis:
 
@@ -234,7 +239,7 @@ We will only consider the following messages, with their value given in hex:
 
 We'll cover the format of each of these in subsequent phases.
 
-##### Records
+#### Records
 
 Just as messages contain values, records contain messages. RFC-8446 defines a
 sub-protocol that it refers to as the ["record protocol"][33]. TLS _messages_
@@ -296,11 +301,11 @@ written during a connection, as described in [section 5.3 of RFC-8446][28]:
 These counters will be used as our record nonces for generating unique
 per-record IVs for record encryption and decryption later on in the handshake.
 The record layer is fully described in [section 5.1 of RFC-8446][27]. We won't
-see encrypted handshake messages until Phase 4, so we will defer diving into
+see encrypted handshake messages until after hellos, so we will defer diving into
 the [record payload protection][22] (i.e. `application_data`-type record
 encryption/decryption) scheme until then.
 
-#### Phase 1: Present client Hello
+### Client: Hello
 
 In the first phase of the handshake, the client presents a client Hello message
 to the server. The format of the client Hello is described [in the RFC][4].
@@ -341,13 +346,13 @@ message headers), in order:
    ```
 1. extensions vector. For example:
 
-```
+   ```
    length                      0000: 00 5b
    <Extension>
    ...
    </Extension>
    ...
-```
+   ```
 
 Each extension is encoded as follows:
 
@@ -485,7 +490,7 @@ hostname                    0000: 63 73 2d 67 79 36 39 30 33 2e 6e 79 75 2e 65 6
 
 </details>
 
-#### Phase 2: Validate server Hello
+### Server: Hello
 
 In the next step of the handshake, the server sends its response(s) back to the
 client - Server Hello message, other handshake messages configuring crypto
@@ -608,7 +613,7 @@ x25519 public key           0000: 86 ed 63 87 0d 3b 75 ad 7b 0a fe 10 fd 04 d1 5
 
 </details>
 
-#### Phase 3: Calculate Handshake Secrets
+### Client: Calculate Handshake Secrets
 
 Now that the client has generated its own keypair and has received that of the
 server, it's ready to calculate the handshake secrets. Section 4.2.8.2 of the RFC
@@ -831,30 +836,54 @@ available for the transcript. Therefore at this stage we can only compute
 handshake traffic secrets as we can only compute transcript hash of the hellos.
 Only after we receive and decrypt subsequent server handshake message,
 send client finished message, we will be able to compute rest of the
-applicaction traffic keys. The algorithm for computing them will be the same
+application traffic keys. The algorithm for computing them will be the same
 except the transcript hash to compute them will include more handshake messages.
 
-#### Phase 4: Validate server: Certificate, CertificateVerify, and Finished
+### Server: Change Cipher Spec
 
 Now that both sides have exchanged their respective Hello messages and key
 shares, the rest of the handshake can be encrypted using keys derived from the
-shared secret. Unlike preceding plaintext handshake records, ecrypted handshake
+shared secret. Server indicates that with a change cipher spec message.
+The format of it as follows:
+
+- number `1` indicating after this message everything is encrypted. For example:
+  ```
+  data                        0000: 01
+  ```
+
+### Server: Encrypted Extensions, Certificate, CertificateVerify, and Finished
+
+Unlike preceding plaintext handshake records, encrypted handshake
 messages have a record type of "application data" (`0x17`). Encrypted
 application data records, described in [section 5.2 of RFC-8446][22], have the
 following format (this includes the record header):
 
-- record type `0x17 (1 byte)
-- unused legacy protocol version `0x0303` (2 bytes)
-- record data length (2 bytes)
-- encrypted application data ciphertext (variable length)
-- authentication tag (length depends on cipher, 16 bytes for AES GCM)
+- record type. For example:
+  ```
+  APPLICATION_DATA            0000: 17
+  ```
+- unused legacy protocol version. For example:
+  ```
+  TLS12                       0000: 03 03
+  ```
+- record data length. For example:
+  ```
+  length                      0000: 00 1b
+  ```
+- encrypted application data ciphertext (variable length). For example:
+  ```
+  data                        0000: 66 c7 fa 63 10 e2 db d9 7e 5f 7f 42 74 ed 2f 33
+                              0016: 94 7b 5c 01 ca f7 3f 49 ae 99 b8
+  ```
+  Note that the ciphertext will include the authentication tag from the
+  AE (authenticated encryption) cipher such as AES-GCM.
 
 For each of this phase's messages, we'll need to decrypt the records in order
 to parse the messages and validate their contents. Per our negotiated
 ciphersuite, these records are encrypted using 128-bit AES GCM, so we know that
 we'll need a master key and an IV. The calculation of these inputs is partially
 described in [section 7.3 of RFC-8446][23]; you may recognize our old friend
-`HKDF-Expand-Label` from Phase 3:
+`HKDF-Expand-Label`:
 
 ```
    [sender]_write_key = HKDF-Expand-Label(Secret, "key", "", key_length)
@@ -867,18 +896,16 @@ compromising the security of the symmetric encryption. So, for each encrypted
 record, we need to modify our IV using a nonce as described in [section 5.3 of
 RFC-8446][28]:
 
-```
-   The per-record nonce for the AEAD construction is formed as follows:
-
-   1.  The 64-bit record sequence number is encoded in network byte
-       order and padded to the left with zeros to iv_length.
-
-   2.  The padded sequence number is XORed with either the static
-       client_write_iv or server_write_iv (depending on the role).
-
-   The resulting quantity (of length iv_length) is used as the
-   per-record nonce.
-```
+> The per-record nonce for the AEAD construction is formed as follows:
+>
+> 1.  The 64-bit record sequence number is encoded in network byte
+>     order and padded to the left with zeros to iv_length.
+>
+> 2.  The padded sequence number is XORed with either the static
+>     client_write_iv or server_write_iv (depending on the role).
+>
+> The resulting quantity (of length iv_length) is used as the
+> per-record nonce.
 
 We feed nonce into the AES cipher as an IV to decrypt records. Note that the
 sequence number must be incremented after each record in the handshake is sent
@@ -888,19 +915,19 @@ So, what do we use for the `Secret` passed into `HKDF-Expand-Label`?
 Recall this excerpt from the graph in [section 7.1 of RFC-8446][18]:
 
 ```
-   (EC)DHE -> HKDF-Extract = Handshake Secret
-             |
-             +-----> Derive-Secret(., "c hs traffic",
-             |                     client Hello...server Hello)
-             |                     = client_handshake_traffic_secret
-             |
-             +-----> Derive-Secret(., "s hs traffic",
-             |                     client Hello...server Hello)
-             |                     = server_handshake_traffic_secret
+(EC)DHE -> HKDF-Extract = Handshake Secret
+         |
+         +-----> Derive-Secret(., "c hs traffic",
+         |                     client Hello...server Hello)
+         |                     = client_handshake_traffic_secret
+         |
+         +-----> Derive-Secret(., "s hs traffic",
+         |                     client Hello...server Hello)
+         |                     = server_handshake_traffic_secret
 ```
 
 For decrypting encrypted records on the client side during the handshake, we
-will generate keys using the server's derived secret, expanded with label with
+will generate keys using the server's derived secret, expanded with label
 "s hs traffic". Note that the handshake keys and IVs are different for client
 and server. In order to encrypt/decrypt both sides of the conversation, both
 client and server will need to compute each others' symmetric cipher inputs.
@@ -913,25 +940,81 @@ to use the other's secret to derive the symmetric cipher inputs for decryption.
 
 Once the client has established the server's handshake key and IV (using the
 latter to calculate the per-record nonce), they can pass the key, nonce,
-ciphertext, and authentication tag to a cryptography library to perform AES
+ciphertext (including authentication tag) to a cryptography library to perform AES
 decryption (and validation of the auth tag against the ciphertext, ensuring
 integrity).
+
+The decrypted plaintext is going to contain decrypted TLS record message.
+Note that the decrypted message can be of any record type - handshake,
+application data, etc. As such the plaintext will contain an indication of
+the type of the record which was originally encrypted. That is described by
+[`TLSInnerPlaintext`][22] object. Practically the last byte of the inner
+plaintext will indicate the `ContentType` of the message. For encrypted
+extensions, server certificate, certificate verify and finished messages the
+type is going to be a handshake message. If you receive any other type such as
+alert, something went wrong and you should not proceed with the handshake.
 
 Now it's time to parse and validate the server's messages! As with prior
 sections detailing message format, we will elide record and message headers
 below.
 
-The server Certificate message is given in the following format:
+Before server verification messages, the server will send [encrypted extensions][39] handshake message.
+As per RFC:
 
-- request context `0x00` (1 bytes total)
-- certificate list for `n` certificates (3 bytes)
-- certificate `0` length (3 bytes)
-- certificate `0` data (variable length)
-- certificate `1` length (3 bytes)
-- certificate `1` data (variable length)
-- ...
-- certificate `n` length (3 bytes)
-- certificate `n` data (variable length)
+> The EncryptedExtensions message contains extensions that can be
+> protected, i.e., any which are not needed to establish the
+> cryptographic context but which are not associated with individual
+> certificates.
+
+The format of the message is as follows (excluding headers):
+
+- handshake type. For example:
+  ```
+  ENCRYPTED_EXTENSIONS        0000: 08
+  ```
+- length pf the handshake fragment. For example:
+  ```
+  length                      0000: 00 00 06
+  ```
+- length of the list of extensions. For example:
+  ```
+  length                      0000: 00 04
+  ```
+- list of extensions. For example:
+  ```
+  SERVER_NAME                 0000: 00 00
+  SERVER_NAME                 0000: 00 00
+  ```
+  Note that it could contain duplicate extension names.
+
+Then you should receive the server verification messages.
+Server Certificate message is given in the following format:
+
+- request context vector. Usually empty. For example:
+  ```
+  length                      0000: 00
+  certificate context
+  ```
+- certificate list vector length. For example:
+  ```
+  length                      0000: 00 07 5e
+  ```
+- certificate `i` length. For example:
+  ```
+  length                      0000: 00 02 cb
+  ```
+- certificate `i` data. For example:
+  ```
+  x509 certificate            0000: 30 82 02 c7 30 82 01 af a0 03 02 01 02 02 14 45
+                              0016: d2 12 7f 3d 2b a9 4c 95 4c b7 3a ef df b7 4c 11
+                              0032: 63 b1 c0 30 0d 06 09 2a 86 48 86 f7 0d 01 01 0b
+                              0048: 05 00 30 3c 31 0b 30 09 06 03 55 04 06 13 02 55
+                              ...
+  ```
+- certificate `i` extensions. Usually empty. For example:
+  ```
+  length                      0000: 00 00
+  ```
 
 NOTE: the bytes representing each certificate are presented in a format we
 haven't seen yet in this assignment: x509 encoded in ASN.1 DER. This steaming
@@ -942,11 +1025,11 @@ intricate); feel free to use a library to parse it.
 After parsing the certificate, we will need to check the following attributes
 of the cert to determine whether the cert is valid:
 
-1. Issuer Name matches provided CA
 1. cert is temporally valid (i.e. current time is after Not Before and before
    Not After)
-1. Subject Name matches client Hello's SNI
-1. the Certificate trust chain is valid per the trusted CA pulic key cert
+1. Validate hostname. If certificate has SNI, use that. Otherwise fallback
+   to certificate Common Name for hostname validation.
+1. the Certificate trust chain is valid per the trusted CA public key cert
    inputted at the top-level of the project. we'll cover walking this trust
    chain in greater detail below.
 
@@ -962,10 +1045,22 @@ the presented certificate.
 
 The CertificateVerify message is given in the following format:
 
-- signature type `0x0403` [for `ecdsa_secp256r1_sha256`][26] (2
-  bytes)
-- signature length `0x40` (2 bytes)
-- signature data (64 bytes)
+- signature type `0x0403` [for `ecdsa_secp256r1_sha256`][26]. For example:
+  ```
+  ECDSA_SECP256R1_SHA256      0000: 04 03
+  ```
+- signature length. For example:
+  ```
+  length                      0000: 00 47
+  ```
+- signature data. For example:
+  ```
+  signature                   0000: 30 45 02 21 00 8d 9c 78 fa f0 9f e8 f0 40 1c a1
+                              0016: 2a 16 89 cd be 02 02 e9 7c 64 67 ec ae 45 9d 94
+                              0032: 79 dc dd a1 4f 02 20 7e bf 8e c1 4c c5 14 69 92
+                              0048: 29 de 91 85 4b 27 fb 1c f2 3b 90 83 5b 58 72 4f
+                              0064: 0f b0 45 0d b4 72 6b
+  ```
 
 The server Finished message is used by the server to tell the client that it
 has sent all of its handshake messages, and that if the client agrees on an
@@ -976,32 +1071,32 @@ The Finished messge has a single field, `verify_data`. [Section 4.4.4 of
 RFC-8446][23] describes how this value is calculated:
 
 ```
-   finished_key =
-      HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
+finished_key =
+  HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
 ...
-      verify_data =
-          HMAC(finished_key,
-               Transcript-Hash(Handshake Context,
-                               Certificate*, CertificateVerify*))
+verify_data =
+  HMAC(finished_key,
+       Transcript-Hash(Handshake Context,
+                       Certificate*, CertificateVerify*))
 ```
 
 And [section 4.4 of RFC-8446][25] describes how `BaseKey` for server Finished
 is determined:
 
 ```
-   The following table defines the Handshake Context and MAC Base Key
-   for each scenario:
+The following table defines the Handshake Context and MAC Base Key
+for each scenario:
 
-   +-----------+-------------------------+-----------------------------+
-   | Mode      | Handshake Context       | Base Key                    |
-   +-----------+-------------------------+-----------------------------+
-   | Server    | ClientHello ... later   | server_handshake_traffic_   |
-   |           | of EncryptedExtensions/ | secret                      |
-   |           | CertificateRequest      |                             |
++-----------+-------------------------+-----------------------------+
+| Mode      | Handshake Context       | Base Key                    |
++-----------+-------------------------+-----------------------------+
+| Server    | ClientHello ... later   | server_handshake_traffic_   |
+|           | of EncryptedExtensions/ | secret                      |
+|           | CertificateRequest      |                             |
 ```
 
 We use the server handshake secret as the `BaseKey`. Recall that we derived
-this secret in Phase 3. Upon recieving the server Finished message, the client
+this secret earlier. Upon receiving the server Finished message, the client
 needs to determine whether it is valid. It can do this by independently
 computing what it believes to be the correct server Finished transcript hash,
 computing HMAC over that transcript using the server's handshake secret (as
@@ -1021,9 +1116,35 @@ RFC-8446][21]:
 
 The server Finished message is given in the following format:
 
-- verify data (size of HMAC-SHA256 output, 32 bytes)
+- verify data (size of HMAC-SHA256 output). For example:
+  ```
+  verify data                 0000: b2 0e e2 14 50 95 ab 44 d3 c3 ba 59 4d ce 7d 64
+                              0016: 51 2f 8e 56 71 66 b9 35 e5 5c c2 c7 0c 9b 7e fb
+  ```
 
-#### Phase 5: Present client Finished
+### Client: Calculate Server Application Key
+
+Now that server has send to the client finished message, the client can
+calculate server application traffic key:
+
+```
+37             +-----> Derive-Secret(., "s ap traffic",
+38             |                     client Hello...server Finished)
+39             |                     = server_application_traffic_secret_0
+```
+
+The method for calculating this key is the same as for handshake except
+it uses a different transcript hash which will include the all handshake
+messages seen so far including server finished message. See above for
+more specifics how to calculate this key.
+
+### Client: Change Cipher Spec
+
+Similarly as with server switching to encrypted messages, client also needs to
+send an indicator subsequent messages will be encrypted. The structure of
+the message is identical to server change cipher spec. See above for example.
+
+### Client: Finished
 
 The client Finished message performs a similar function as server Finished --
 it gives the server an authentic digest of the client's view of the handshake,
@@ -1035,13 +1156,13 @@ The client's `verify_data` is computed in the same way as the server's,
 described in [Section 4.4.4 of RFC-8446][23]:
 
 ```
-   finished_key =
-      HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
+finished_key =
+  HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
 ...
-      verify_data =
-          HMAC(finished_key,
-               Transcript-Hash(Handshake Context,
-                               Certificate*, CertificateVerify*))
+verify_data =
+  HMAC(finished_key,
+       Transcript-Hash(Handshake Context,
+                       Certificate*, CertificateVerify*))
 ```
 
 The only differences between client and server Finished messages are the
@@ -1050,25 +1171,128 @@ handshake context and which `BaseKey` is used to derive the HMAC's
 from [section 4.4 of RFC-8446][25]:
 
 ```
-   The following table defines the Handshake Context and MAC Base Key
-   for each scenario:
+The following table defines the Handshake Context and MAC Base Key
+for each scenario:
 
-   +-----------+-------------------------+-----------------------------+
-   | Mode      | Handshake Context       | Base Key                    |
-   +-----------+-------------------------+-----------------------------+
-   ...
-   | Client    | ClientHello ... later   | client_handshake_traffic_   |
-   |           | of server               | secret                      |
-   |           | Finished/EndOfEarlyData |                             |
++-----------+-------------------------+-----------------------------+
+| Mode      | Handshake Context       | Base Key                    |
++-----------+-------------------------+-----------------------------+
+...
+| Client    | ClientHello ... later   | client_handshake_traffic_   |
+|           | of server               | secret                      |
+|           | Finished/EndOfEarlyData |                             |
 ```
 
 The client Finished message should be given in the following format:
 
 - verify data (size of HMAC-SHA256 output, 32 bytes)
+  ```
+  verify data                 0000: 19 11 47 ed 22 c0 36 cf 7f fe ae 88 98 3b 78 4d
+                              0016: 05 61 8f b0 c9 8a 58 5a 74 e8 74 52 b1 bf 70 4d
+  ```
+
+### Client: Calculate Client Application Key
+
+Now that the client also sent its finished message, the client can
+calculate its application traffic key:
+
+```
+33             +-----> Derive-Secret(., "c ap traffic",
+34             |                     client Hello...server Finished)
+35             |                     = client_application_traffic_secret_0
+```
+
+The method for calculating this key is the same as for handshake except
+it uses a different transcript hash which will include the all handshake
+messages seen so far including server finished as well as client finished
+messages. See above for more specifics how to calculate this key.
+
+### Client: HTTP Request
+
+Now that TLS handshake is complete we can send HTTP request to the server.
+Note that all application data is encrypted with application traffic keys
+(calculated previously), not handshake keys as in all previous messages. Also
+note that this key will use its own IV counter therefore the counter will start
+from 0 here.
+
+HTTP request is very simple and has the following format:
+
+```
+{method} {path} HTTP/{version}
+{headername_0}: {headervalue_0}
+{headername_1}: {headervalue_1}
+...
+
+{body}
+```
+
+Note that line delimiter in HTTP is `\r\n`. Also after HTTP headers there
+should be an additional empty line (hence one more `\r\n`) to indicate
+transition to HTTP body section.
+
+For example here is a valid HTTP request:
+
+```
+GET / HTTP/1.0
+Host: google.com
+```
+
+Or represented as Python bytes object:
+
+```python
+b'GET / HTTP/1.0\r\nHost: google.com\r\n\r\n'
+```
+
+You can actually very easily create HTTP requests via `telnet`:
+
+```sh
+➜ telnet google.com 80
+Trying 142.251.40.238...
+Connected to google.com.
+Escape character is '^]'.
+GET / HTTP/1.0
+Host: google.com
+
+HTTP/1.0 301 Moved Permanently
+...
+```
+
+Full HTTP plaintext request TLS record will look something like:
+
+```
+<Record>
+APPLICATION_DATA            0000: 17
+TLS12                       0000: 03 03
+length                      0000: 00 24
+data                        0000: 47 45 54 20 2f 20 48 54 54 50 2f 31 2e 30 0d 0a
+                            0016: 48 6f 73 74 3a 20 67 6f 6f 67 6c 65 2e 63 6f 6d
+                            0032: 0d 0a 0d 0a
+</Record>
+```
+
+### Server: HTTP Response
+
+Server should then respond with HTTP response. Note that response records will
+be encrypted by server application traffic key (from above). Its IV counter
+will also start at 0.
+
+The format of the HTTP response is similar to the request:
+
+```
+HTTP/{version} {statuscode} {desciption}
+{headername_0}: {headervalue_0}
+{headername_1}: {headervalue_1}
+...
+
+{body}
+```
+
+For this project you do not need to actually parse HTTP responses and will
+just need to return all of the bytes server has replied with.
 
 ## Scaffolding Problems
 
-[`project.py`](./project.py) contains a number of stubs and utility functions
+[`./project.py`](./project.py) contains a number of stubs and utility functions
 that you may use (or port over to your langauge of choice) in building your
 soluiton. A subset of these functions are intended as "scaffolding" to guide
 your implmeentation as you build it. The scaffolding problems are not used in
@@ -1079,9 +1303,13 @@ They are imported and executed automatically from python submissions.
 Submissions in other languages may receive their BSON-encoded input over stdin
 and return BSON-encoded output over stdout, much like the problem sets.
 
+In addition there is also [`./public.py`](./public.py) which has some utilities
+reference implementation used and you may use if they help you. It also has
+all of the relevant enums from the RFC translated as Python enums.
+
 ## Examples
 
-[`examples.log`](./examples.log) contains a number of example handshakes against
+[`./examples.log`](./examples.log) contains a number of example handshakes against
 the same nginx TLS implementation that gradescope will use for grading, as well
 as a couple of popular public sites. For each handshake it shows:
 
@@ -1101,6 +1329,29 @@ Gradescope has the following libraries pre-installed:
 
 If you would like to install additional dependencies, feel free to do so in
 `setup.sh` with `pip install ...`.
+
+## Nginx
+
+[`./nginx/`](./nginx) contains sample [nginx][nginx] configuration you can use for
+local testing. Easy way of running it is via [docker compose][docker-compose]:
+
+```sh
+# cd to where docker-compose.yml is located
+docker-compose up nginx
+```
+
+This configuration listens on port 8443 and has 2 servers configured:
+
+- default TLS catch-all server which responds to all non-SNI requests.
+  ```sh
+  ➜ curl https://localhost:8443 --insecure
+  no sni
+  ```
+- SNI server which will only respond to 'cs-gy6903.nyu.edu`. For example:
+  ```sh
+  ➜ curl https://cs-gy6903.nyu.edu:8443 --insecure --resolve cs-gy6903.nyu.edu:8443:127.0.0.1
+  sni
+  ```
 
 ## CLI
 
@@ -1159,3 +1410,6 @@ options:
 [36]: https://www.rfc-editor.org/rfc/rfc8446#section-4.4.1
 [37]: https://datatracker.ietf.org/doc/rfc8448/
 [38]: https://www.rfc-editor.org/rfc/rfc8446#section-4.2.3
+[39]: https://www.rfc-editor.org/rfc/rfc8446#section-4.3.1
+[nginx]: https://nginx.org/en/
+[docker-compose]: https://docs.docker.com/compose/
