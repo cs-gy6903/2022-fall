@@ -119,6 +119,19 @@ Extension, and Key Share Extension:
 
 ## Specification
 
+**NOTE** this section is an attempt to simplify the RFC however IT IS NOT a
+substitute to actually checking the RFC. It is ultimately the source of truth
+of the TLS1.3 specification. This document describes (at least attempts to)
+all critical parts of the TLS tunnel which will be required to complete this
+project and links to original RFC sections. Part of the project is reading,
+understanding and applying cryptographic/security related documents such as an
+RFC.
+
+Side note. This RFC is actually pretty approachable. If you never read these
+type of documents before, please do give it a try. There are no dragons here
+and no-one will bite you :D. Just the ultimate bragging rights for implementing
+TLS which very few people can say they did that :wink:
+
 ### Values, Messages, and Records
 
 #### Values and Types
