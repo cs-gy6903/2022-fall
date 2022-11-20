@@ -12,6 +12,7 @@
     - [Messages](#messages)
     - [Records](#records)
   - [Client: Hello](#client-hello)
+  - [Server: Alert](#server-alert)
   - [Server: Hello](#server-hello)
   - [Client: Calculate Handshake Secrets](#client-calculate-handshake-secrets)
   - [Server: Change Cipher Spec](#server-change-cipher-spec)
@@ -20,8 +21,10 @@
   - [Client: Change Cipher Spec](#client-change-cipher-spec)
   - [Client: Finished](#client-finished)
   - [Client: Calculate Client Application Key](#client-calculate-client-application-key)
+  - [Server: New Session Tickets](#server-new-session-tickets)
   - [Client: HTTP Request](#client-http-request)
   - [Server: HTTP Response](#server-http-response)
+  - [Server: Close Notify](#server-close-notify)
 - [Scaffolding Problems](#scaffolding-problems)
 - [Examples](#examples)
 - [Gradescope](#gradescope)
@@ -489,6 +492,30 @@ hostname                    0000: 63 73 2d 67 79 36 39 30 33 2e 6e 79 75 2e 65 6
 ```
 
 </details>
+
+### Server: Alert
+
+Now that server has received some data from the client, at any point of the TLS
+connection, server may send back to the client an alert message. Alert messages
+are very simply since they only have an alert level and a description enum
+values. For example:
+
+```
+<Record>
+ALERT                       0000: 15
+TLS12                       0000: 03 03
+length                      0000: 00 02
+FATAL                       0000: 02
+CLOSE_NOTIFY                0000: 14
+</Record>
+```
+
+You should handle alert messages, especially if they are of `FATAL` level.
+In that case something bad happened and TLS tunnel should be aborted.
+
+NOTE that alert messages can come in plaintext before any keys have
+been exchanged or could be encrypted after key schedule either for
+handshake or application data have been established.
 
 ### Server: Hello
 
@@ -1207,6 +1234,40 @@ it uses a different transcript hash which will include the all handshake
 messages seen so far including server finished as well as client finished
 messages. See above for more specifics how to calculate this key.
 
+### Server: New Session Tickets
+
+After handshake is complete, the server may send [new session tickets][40]
+handshake message. It will contain a "ticket" the client can use to to resume
+TLS session in the future. We wont be attempting to do that however nonetheless
+we should process these messages from the server and then promptly forget about
+them :D. For code simplicity you may simply read however many bytes handshake
+header specifies and ignore them. If you are curious however, the structure of
+the message is:
+
+- how long (in seconds) ticket is valid for. For example:
+  ```
+  ticket lifetime             0000: 00 00 00 3c
+  ```
+- random number client should add to tickets to obscure them. For example:
+  ```
+  ticket age add              0000: d7 d9 e9 47
+  ```
+- ticket nonce vector. For example:
+  ```
+  length                      0000: 08
+  ticket nonce                0000: 00 00 00 00 00 00 00 00
+  ```
+- ticket vector. For example:
+  ```
+  length                      0000: 00 20
+  ticket                      0000: 5c 44 21 ff d8 15 46 d3 72 c2 89 5c 36 b2 82 04
+                              0016: bd 8a 7e 8f 28 31 1d 2c cf 0f ae 5d 0a 24 df 59
+  ```
+- extensions. Note this will most likely be empty. For example:
+  ```
+  length                      0000: 00 00
+  ```
+
 ### Client: HTTP Request
 
 Now that TLS handshake is complete we can send HTTP request to the server.
@@ -1289,6 +1350,25 @@ HTTP/{version} {statuscode} {desciption}
 
 For this project you do not need to actually parse HTTP responses and will
 just need to return all of the bytes server has replied with.
+
+### Server: Close Notify
+
+After server sends its application data payload back to the client it may send
+you close notify alert warning message. Basically it means that server politely
+notifies the client that the tunnel is being closed and no more data should
+be communicated over it. Mainly this happens as we made `HTTP1.0` request above
+which does not support keep-alive connections. You can safely ignore this alert.
+Its structure is something like:
+
+```
+<Record>
+ALERT                       0000: 15
+TLS12                       0000: 03 03
+length                      0000: 00 02
+WARNING                     0000: 01
+CLOSE_NOTIFY                0000: 00
+</Record>
+```
 
 ## Scaffolding Problems
 
@@ -1411,5 +1491,6 @@ options:
 [37]: https://datatracker.ietf.org/doc/rfc8448/
 [38]: https://www.rfc-editor.org/rfc/rfc8446#section-4.2.3
 [39]: https://www.rfc-editor.org/rfc/rfc8446#section-4.3.1
+[40]: https://www.rfc-editor.org/rfc/rfc8446#section-4.6.1
 [nginx]: https://nginx.org/en/
 [docker-compose]: https://docs.docker.com/compose/
