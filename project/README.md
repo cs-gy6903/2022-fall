@@ -3,7 +3,7 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-- [Desription](#desription)
+- [Description](#description)
 - [Resources](#resources)
 - [Specification](#specification)
   - [Values, Messages, and Records](#values-messages-and-records)
@@ -33,10 +33,11 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## Desription
+## Description
+
+ASCII diagram is worth a thousand words (figure directly from RFC):
 
 ```
-
        Client                                           Server
 
 Key  ^ ClientHello
@@ -1216,6 +1217,10 @@ it uses a different transcript hash which will include the all handshake
 messages seen so far including server finished message. See above for
 more specifics how to calculate this key.
 
+All subsequent messages from the server will be encrypted with this application
+traffic key. Note that server and client keys use independent IV counter and
+server counter will start at 0 from this point.
+
 ### Client: Change Cipher Spec
 
 Similarly as with server switching to encrypted messages, client also needs to
@@ -1324,8 +1329,9 @@ the message is:
 Now that TLS handshake is complete we can send HTTP request to the server.
 Note that all application data is encrypted with application traffic keys
 (calculated previously), not handshake keys as in all previous messages. Also
-note that this key will use its own IV counter therefore the counter will start
-from 0 here.
+note that both client and server application keys have independent IV counters.
+As HTTP request is the first application data message for the client, the
+counter will start at 0 from here.
 
 HTTP request is very simple and has the following format:
 
@@ -1342,14 +1348,14 @@ Note that line delimiter in HTTP is `\r\n`. Also after HTTP headers there
 should be an additional empty line (hence one more `\r\n`) to indicate
 transition to HTTP body section.
 
-For example here is a valid HTTP request:
+For example here is a valid HTTP request (omitting line delimiter):
 
 ```
 GET / HTTP/1.0
 Host: google.com
 ```
 
-Or represented as Python bytes object:
+Or including line delimiters as Python bytes object:
 
 ```python
 b'GET / HTTP/1.0\r\nHost: google.com\r\n\r\n'
@@ -1384,9 +1390,7 @@ data                        0000: 47 45 54 20 2f 20 48 54 54 50 2f 31 2e 30 0d 0
 
 ### Server: HTTP Response
 
-Server should then respond with HTTP response. Note that response records will
-be encrypted by server application traffic key (from above). Its IV counter
-will also start at 0.
+Server should then respond with HTTP response.
 
 The format of the HTTP response is similar to the request:
 
@@ -1471,17 +1475,52 @@ local testing. Easy way of running it is via [docker compose][docker-compose]:
 docker-compose up nginx
 ```
 
-This configuration listens on port 8443 and has 2 servers configured:
+This configuration listens on port 8443 and has 2 servers configured.
+In additional `Makefile` is provided with "unit" tests which can query both
+servers as sanity checks. Each will show you both the certificate server
+has responded with as well as will you the response content.
 
 - default TLS catch-all server which responds to all non-SNI requests.
   ```sh
-  ➜ curl https://localhost:8443 --insecure
+  ➜ make default
+  ...
+  Certificate:
+      ...
+          Issuer: C = US, O = NYU, CN = CS-GY6903 Intermediate
+          ...
+          Subject: CN = cs-gy6903.nyu.edu
+          ...
+          X509v3 extensions:
+              ... # no SNI extension here
+      ...
+  curl https://localhost:8443 \
+          --silent \
+          --insecure \
+          | grep 'no sni'
   no sni
   ```
 - SNI server which will only respond to 'cs-gy6903.nyu.edu`. For example:
   ```sh
-  ➜ curl https://cs-gy6903.nyu.edu:8443 --insecure --resolve cs-gy6903.nyu.edu:8443:127.0.0.1
-  sni
+  ➜ make sni
+  ...
+  Certificate:
+      Data:
+          ...
+          Issuer: C = US, O = NYU, CN = CS-GY6903 Intermediate
+          ...
+          Subject: CN = nyu.edu
+          ...
+          X509v3 extensions:
+              X509v3 Subject Alternative Name:
+                  DNS:cs-gy6903.nyu.edu, DNS:www.cs-gy6903.nyu.edu
+              ...
+      ...
+  curl https://cs-gy6903.nyu.edu:8443 \
+          --silent \
+          --insecure \
+          --resolve cs-gy6903.nyu.edu:8443:127.0.0.1 \
+          | grep 'with sni'
+  with sni
   ```
 
 ## CLI
