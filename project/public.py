@@ -569,7 +569,7 @@ class Error(enum.Enum):
     BAD_TLS_VERSION = "<error:bad tls version>"
     BAD_SIGNATURE = "<error:bad signature>"
     BAD_CERTIFICATE = "<error:bad certificate>"
-    BAD_CERRITIFCATE_VALIDITY = "<error:bad certificate validity>"
+    BAD_CERTIFICATE_VALIDITY = "<error:bad certificate validity>"
     MISSING_RECORDS = "<error:missing records>"
     INVALID_HOSTNAME = "<error:invalid hostname>"
     OTHER = "<error:other>"
