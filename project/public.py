@@ -567,12 +567,45 @@ TRANSCRIPT_HANDSHAKES = (
 @enum.unique
 class Error(enum.Enum):
     BAD_TLS_VERSION = "<error:bad tls version>"
+    """
+    Used when bad TLS version (non 1.3) is encountered
+    """
+
     BAD_SIGNATURE = "<error:bad signature>"
+    """
+    Used when any of the server certificate signatures are invalid
+    For example when Certificate signature is "corrupted" signed by the
+    intermediate cert
+    """
+
     BAD_CERTIFICATE = "<error:bad certificate>"
+    """
+    Used when client receives certificate which cannot be validated
+    For example it is issued by unkown issuer
+    """
+
     BAD_CERTIFICATE_VALIDITY = "<error:bad certificate validity>"
+    """
+    Used when server sertificate has bad validity period.
+    It applies to both cert is not valid yet or already expired.
+    """
+
     MISSING_RECORDS = "<error:missing records>"
+    """
+    Used when server did not send some required TLS records.
+    """
+
     INVALID_HOSTNAME = "<error:invalid hostname>"
+    """
+    Used when hostname could not be validated.
+    Host validate should use SNI and if missing the certificate
+    fallback to CN of the cert subject.
+    """
+
     OTHER = "<error:other>"
+    """
+    Used for any other TLS errors
+    """
 
 
 def rfc_enum(length: int, data: str):
