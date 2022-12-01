@@ -6,6 +6,7 @@
 - [ps2](./ps2/) - Diffie-Hellman key agreement
 - [ps3](./ps3/) - hashing
 - [ps4](./ps4/) - unauthenticated block cipher modes
+- [ps5](./ps5/) - EC point arithmetic (extra credit)
 
 ## Optional Assignments
 
