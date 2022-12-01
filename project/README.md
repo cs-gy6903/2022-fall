@@ -1122,6 +1122,10 @@ the certificate's private key. To authenticate the server's ownership of the
 cert's private key, the client verifies this signature using the public key in
 the presented certificate.
 
+Note that the signature includes more bits in addition to the transcript
+hash. See RFC for exactly what to to prepend the transcript hash with
+in order to validate the signature correctly.
+
 The CertificateVerify message is given in the following format:
 
 - signature type `0x0403` [for `ecdsa_secp256r1_sha256`][26]. For example:
