@@ -112,9 +112,10 @@ def point_multiply(a: int, b: int, p: int, x: int, y: int, n: int) -> P:
     we can implement point multiplication where multiplying by:
 
     * 1 == point itself
-    * -1 == point negation
     * 2 == point double
     * x == point added x times. double and add method make this easy
+    * -1 == point negation
+    * -x == x * -1 (negate point and then multiply by positive multiplier)
 
     Instead of adding same point many-many times, double and add method should be used
     to make that operation much simpler. For example:
